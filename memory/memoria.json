@@ -1,0 +1,24 @@
+{
+  "temas_utilizados": [],
+  "videos_produzidos": [],
+  "metricas_globais": {
+    "total_videos": 0,
+    "ctr_medio": 0,
+    "retencao_media": 0,
+    "inscritosAtual": 0,
+    "viewsTotais": 0
+  },
+  "erros_detectados": [],
+  "acertos_detectados": [],
+  "prompts_otimizados": {},
+  "estrategia_atual": {
+    "versao": 1,
+    "atualizado_em": null,
+    "foco_atual": "crescimento inicial — priorizar volume e consistência",
+    "evitar": [],
+    "priorizar": ["mistérios históricos", "crimes reais não resolvidos", "fenômenos inexplicados", "conspirações documentadas"]
+  },
+  "resumos_diarios": [],
+  "resumos_semanais": [],
+  "resumos_mensais": []
+}

@@ -1,0 +1,21 @@
+{
+  "name": "agente-canal-dark",
+  "version": "1.0.0",
+  "description": "Sistema autônomo de produção de conteúdo para YouTube — nicho dark/mistérios",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js ciclo",
+    "continuo": "node index.js continuo 4",
+    "relatorio": "node index.js relatorio-diario",
+    "relatorio-semanal": "node index.js relatorio-semanal",
+    "pm2:start": "pm2 start index.js --name canal-dark -- continuo 4",
+    "pm2:stop": "pm2 stop canal-dark",
+    "pm2:logs": "pm2 logs canal-dark"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0",
+    "openai": "^4.67.0"
+  }
+}
