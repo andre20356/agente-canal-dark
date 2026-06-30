@@ -8,7 +8,7 @@ async function gerarRoteiro(tema, duracaoMin = 12) {
   }
 
   const genAI = new GoogleGenerativeAI(config.apis.gemini);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = gerarPromptRoteiro(tema, duracaoMin);
 
