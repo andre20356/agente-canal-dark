@@ -9,6 +9,7 @@ module.exports = {
   },
 
   apis: {
+    gemini: process.env.GEMINI_API_KEY || null,
     elevenlabs: process.env.ELEVENLABS_API_KEY || null,
     youtubeDataApi: process.env.YOUTUBE_API_KEY || null,
     openai: process.env.OPENAI_API_KEY || null,
