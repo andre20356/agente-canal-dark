@@ -4,39 +4,48 @@ const path = require('path');
 const ARQUIVO = path.join(__dirname, 'memoria.json');
 
 function carregar() {
-  if (!fs.existsSync(ARQUIVO)) {
-    const vazio = {
-      temas_utilizados: [], videos_produzidos: [],
-      metricas_globais: { total_videos: 0, ctr_medio: 0, retencao_media: 0, inscritosAtual: 0, viewsTotais: 0 },
-      erros_detectados: [], acertos_detectados: [],
-      prompts_otimizados: {},
-      estrategia_atual: { versao: 1, atualizado_em: null, foco_atual: 'crescimento inicial', evitar: [], priorizar: [] },
-      resumos_diarios: [], resumos_semanais: [], resumos_mensais: [],
-    };
-    fs.writeFileSync(ARQUIVO, JSON.stringify(vazio, null, 2));
-    return vazio;
+  if (!fs.existsSync(ARQUIVO)) return _vazio();
+  try {
+    return JSON.parse(fs.readFileSync(ARQUIVO, 'utf-8'));
+  } catch {
+    return _vazio();
   }
-  return JSON.parse(fs.readFileSync(ARQUIVO, 'utf-8'));
 }
 
 function salvar(dados) {
   fs.writeFileSync(ARQUIVO, JSON.stringify(dados, null, 2));
 }
 
-function registrarMetrica(tema, metricas) {
+function registrarVideo(tema, titulo, notaQualidade = null) {
+  const mem = carregar();
+  mem.temas_utilizados.push({
+    tema,
+    titulo,
+    data: new Date().toISOString(),
+    nota_qualidade: notaQualidade,
+    status: 'produzido',
+    metricas_reais: null,
+  });
+  mem.metricas_globais.total_videos++;
+  salvar(mem);
+}
+
+function atualizarMetricas(tema, metricas) {
   const mem = carregar();
   const entrada = mem.temas_utilizados.find(t => t.tema === tema);
   if (entrada) {
     entrada.metricas_reais = metricas;
     entrada.status = 'publicado';
-    // Atualiza médias globais
-    const publicados = mem.temas_utilizados.filter(t => t.metricas_reais);
-    if (publicados.length > 0) {
-      mem.metricas_globais.ctr_medio = publicados.reduce((s, t) => s + (t.metricas_reais.ctr || 0), 0) / publicados.length;
-      mem.metricas_globais.retencao_media = publicados.reduce((s, t) => s + (t.metricas_reais.retencao || 0), 0) / publicados.length;
-    }
     salvar(mem);
   }
 }
 
-module.exports = { carregar, salvar, registrarMetrica };
+function _vazio() {
+  return {
+    temas_utilizados: [],
+    metricas_globais: { total_videos: 0, views_totais: 0, inscritosAtual: 0 },
+    estrategia: { priorizar: [], evitar: [] },
+  };
+}
+
+module.exports = { carregar, salvar, registrarVideo, atualizarMetricas };
