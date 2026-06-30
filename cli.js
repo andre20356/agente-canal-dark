@@ -11,6 +11,7 @@ const { processarSEO }        = require('./pipeline/2_seo');
 const { processarNarracao }   = require('./pipeline/3_narracao');
 const { processarStoryboard } = require('./pipeline/4_storyboard');
 const { processarThumbnail }  = require('./pipeline/5_thumbnail');
+const { uploadYouTube }       = require('./pipeline/6_upload');
 const memoria                 = require('./memory/gerenciador');
 const config                  = require('./config/config');
 
@@ -25,9 +26,9 @@ function cabecalho() {
   const mem = memoria.carregar();
   console.log(`  📊  Vídeos produzidos: ${mem.metricas_globais.total_videos}`);
   const apis = [];
-  if (config.apis.gemini)       apis.push('🤖 Gemini');
-  if (config.apis.elevenlabs)   apis.push('🎙️ ElevenLabs');
-  if (config.apis.youtubeDataApi) apis.push('📺 YouTube');
+  if (config.apis.gemini)            apis.push('🤖 Gemini');
+  if (config.apis.elevenlabs)        apis.push('🎙️ ElevenLabs');
+  if (process.env.YOUTUBE_REFRESH_TOKEN) apis.push('📺 YouTube');
   if (!apis.length) apis.push('⚠️  Sem APIs configuradas');
   console.log(`  🔌  ${apis.join(' | ')}`);
   console.log('═'.repeat(55) + '\n');
@@ -37,9 +38,10 @@ async function menuPrincipal() {
   console.log('O que deseja fazer?\n');
   console.log('  1. Produzir novo vídeo  (autônomo — Gemini gera o roteiro)');
   console.log('  2. Produzir com roteiro manual (sem API)');
-  console.log('  3. Ver temas sugeridos');
-  console.log('  4. Ver histórico');
-  console.log('  5. Sair\n');
+  console.log('  3. Fazer upload no YouTube');
+  console.log('  4. Ver temas sugeridos');
+  console.log('  5. Ver histórico');
+  console.log('  6. Sair\n');
   return pergunta('Escolha: ');
 }
 
@@ -177,6 +179,73 @@ async function produzirManual() {
   exibirResultado(tema, nomeBase, seo, narracao);
 }
 
+// ─── Upload YouTube ───────────────────────────────────────────────────────────
+async function fazerUpload() {
+  if (!process.env.YOUTUBE_REFRESH_TOKEN) {
+    console.log('\n⚠️  YouTube não autenticado.\n');
+    console.log('  Execute primeiro: node scripts/autenticar_youtube.js\n');
+    return;
+  }
+
+  const outputDir = path.join(__dirname, 'output');
+  const pastas = fs.readdirSync(outputDir)
+    .filter(f => fs.statSync(path.join(outputDir, f)).isDirectory())
+    .sort()
+    .reverse();
+
+  if (!pastas.length) { console.log('\n  Nenhum vídeo produzido ainda.\n'); return; }
+
+  console.log('\n📂 Vídeos disponíveis:\n');
+  pastas.slice(0, 10).forEach((p, i) => {
+    const temVideo = fs.readdirSync(path.join(outputDir, p)).some(f => /\.(mp4|mkv|mov|avi)$/i.test(f));
+    const temUpload = fs.existsSync(path.join(outputDir, p, 'youtube_upload.json'));
+    const status = temUpload ? '✅ já enviado' : temVideo ? '🎬 pronto' : '⏳ sem vídeo';
+    console.log(`  ${i + 1}. [${status}] ${p}`);
+  });
+  console.log('');
+
+  const escolha = parseInt(await pergunta('Escolha o vídeo: ')) - 1;
+  if (isNaN(escolha) || escolha < 0 || escolha >= pastas.slice(0, 10).length) {
+    console.log('\n❌ Opção inválida.\n'); return;
+  }
+
+  const dirOutput = path.join(outputDir, pastas[escolha]);
+  const arquivos = fs.readdirSync(dirOutput);
+  const temVideo = arquivos.some(f => /\.(mp4|mkv|mov|avi)$/i.test(f));
+
+  if (!temVideo) {
+    console.log('\n⚠️  Nenhum arquivo de vídeo (.mp4) encontrado nesta pasta.\n');
+    console.log('  Após editar o vídeo no CapCut/DaVinci, salve o .mp4 em:');
+    console.log(`  ${dirOutput}\n`);
+    return;
+  }
+
+  console.log('\n  Privacidade do vídeo:');
+  console.log('  1. Privado    (só você vê — recomendado para revisar)');
+  console.log('  2. Não listado (link direto, não aparece na busca)');
+  console.log('  3. Público    (visível para todos)\n');
+  const priv = await pergunta('Escolha: ');
+  const privacidade = priv === '2' ? 'unlisted' : priv === '3' ? 'public' : 'private';
+
+  console.log('\n─'.repeat(55));
+  console.log('  FAZENDO UPLOAD...');
+  console.log('─'.repeat(55) + '\n');
+
+  try {
+    const resultado = await uploadYouTube(dirOutput, { privacidade });
+
+    console.log('═'.repeat(55));
+    console.log('  ✅  UPLOAD CONCLUÍDO!');
+    console.log('═'.repeat(55));
+    console.log(`\n  🔗 URL: ${resultado.url}`);
+    console.log(`  🔒 Status: ${resultado.privacidade}`);
+    console.log(`  🎬 Video ID: ${resultado.video_id}\n`);
+    console.log('  Resultado salvo em youtube_upload.json\n');
+  } catch (e) {
+    console.error('\n❌ Erro no upload:', e.message, '\n');
+  }
+}
+
 // ─── Loop contínuo (24/7) ─────────────────────────────────────────────────────
 async function modoContinuo(intervaloHoras = 4) {
   console.log(`\n🔄 Modo contínuo ativado — produzindo a cada ${intervaloHoras}h\n`);
@@ -226,13 +295,14 @@ async function main() {
     const opcao = await menuPrincipal();
     if (opcao === '1') await produzirAutonomo();
     else if (opcao === '2') await produzirManual();
-    else if (opcao === '3') {
+    else if (opcao === '3') await fazerUpload();
+    else if (opcao === '4') {
       const s = sugerirTemas(10);
       console.log('\n💡 Temas disponíveis:\n');
       s.forEach((t, i) => console.log(`  ${i+1}. [${t.categoria.toUpperCase()}] ${t.tema}`));
       console.log('');
     }
-    else if (opcao === '4') {
+    else if (opcao === '5') {
       const mem = memoria.carregar();
       if (!mem.temas_utilizados.length) { console.log('\n  Nenhum vídeo produzido ainda.\n'); continue; }
       console.log('\n📺 Histórico:\n');
@@ -242,7 +312,7 @@ async function main() {
       });
       console.log('');
     }
-    else if (opcao === '5') { console.log('\nAté logo! 👋\n'); rl.close(); process.exit(0); }
+    else if (opcao === '6') { console.log('\nAté logo! 👋\n'); rl.close(); process.exit(0); }
     else console.log('\nOpção inválida.\n');
   }
 }
