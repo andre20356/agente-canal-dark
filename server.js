@@ -15,6 +15,7 @@ const { processarStoryboard } = require('./pipeline/4_storyboard');
 const { gerarPlanoVisual }    = require('./pipeline/4b_diretor_visual');
 const { processarThumbnail }  = require('./pipeline/5_thumbnail');
 const { uploadYouTube }       = require('./pipeline/6_upload');
+const { backupParaDrive }     = require('./pipeline/drive_backup');
 const { montarVideo }         = require('./pipeline/7_video');
 const memoria                 = require('./memory/gerenciador');
 
@@ -100,6 +101,8 @@ app.get('/api/stats', (req, res) => {
     emUpload,
     agendamentoAtivo:    AGENDAMENTO_ATIVO,
     horariosAgendados:   HORARIOS_AGENDADOS,
+    limpezaAtiva:        LIMPEZA_ATIVA,
+    limpezaDiasAposBackup: LIMPEZA_DIAS,
   });
 });
 
@@ -212,7 +215,11 @@ app.post('/api/produzir', async (req, res) => {
 app.get('/api/youtube/auth-url', (req, res) => {
   const url = oauthClient().generateAuthUrl({
     access_type: 'offline', prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube'],
+    scope: [
+      'https://www.googleapis.com/auth/youtube.upload',
+      'https://www.googleapis.com/auth/youtube',
+      'https://www.googleapis.com/auth/drive.file',
+    ],
   });
   res.json({ url });
 });
@@ -260,6 +267,7 @@ app.post('/api/youtube/auth', async (req, res) => {
 
 app.post('/api/youtube/upload', async (req, res) => {
   if (emUpload) return res.status(409).json({ error: 'Upload já em andamento' });
+  if (emProducao) return res.status(409).json({ error: 'Aguarde a produção atual terminar (o vídeo pode ainda estar sendo montado) antes de subir' });
   if (!process.env.YOUTUBE_REFRESH_TOKEN) return res.status(400).json({ error: 'YouTube não autenticado' });
   const { nomeBase, privacidade = 'public' } = req.body;
   if (!nomeBase) return res.status(400).json({ error: 'nomeBase obrigatório' });
@@ -273,6 +281,19 @@ app.post('/api/youtube/upload', async (req, res) => {
     const r = await uploadYouTube(dirOutput, { privacidade });
     bus.emit('log', `✓ Upload concluído!`);
     bus.emit('log', `URL: ${r.url}`);
+
+    try {
+      bus.emit('log', 'Enviando cópia de backup pro Google Drive...');
+      const backup = await backupParaDrive(dirOutput, r.videoPath, `${nomeBase}.mp4`);
+      bus.emit('log', `✓ Backup no Drive: ${backup.url}`);
+
+      // YouTube + Drive confirmados — não precisa mais da cópia local
+      fs.rmSync(dirOutput, { recursive: true, force: true });
+      bus.emit('log', `🧹 Pasta local apagada (já está no YouTube e no Drive): ${nomeBase}`);
+    } catch (e) {
+      bus.emit('log', `⚠ Backup no Drive falhou (vídeo já está no YouTube, arquivo local mantido): ${e.message}`);
+    }
+
     bus.emit('done', { upload: true, url: r.url });
   })().catch(e => { console.error('[Upload] Erro:', e.message); bus.emit('error', e.message); }).finally(() => { emUpload = false; });
 });
@@ -327,6 +348,66 @@ function agendarProducaoAutomatica() {
 }
 
 agendarProducaoAutomatica();
+
+// ── Limpeza automática ──────────────────────────────────────────────────────────
+// A pasta local já é apagada na hora, logo após YouTube + Drive confirmarem
+// (ver rota /api/youtube/upload). Este job diário é só uma rede de segurança
+// para pastas que ficaram para trás (ex: servidor reiniciou entre o backup e
+// a exclusão) — nunca mexe em vídeo ainda não publicado/sem backup confirmado.
+
+const LIMPEZA_ATIVA = process.env.LIMPEZA_ATIVA !== 'false'; // ativa por padrão
+const LIMPEZA_DIAS  = parseInt(process.env.LIMPEZA_DIAS_APOS_BACKUP || '0', 10);
+const LIMPEZA_HORA  = process.env.LIMPEZA_HORARIO || '04:00';
+
+function limparVideosAntigos() {
+  if (emProducao || emUpload) {
+    bus.emit('log', '🧹 Limpeza adiada — produção/upload em andamento');
+    return;
+  }
+  const outputDir = path.join(__dirname, 'output');
+  let pastas;
+  try { pastas = fs.readdirSync(outputDir).filter(f => fs.statSync(path.join(outputDir, f)).isDirectory()); }
+  catch { return; }
+
+  const agora = Date.now();
+  let apagadas = 0;
+
+  for (const nome of pastas) {
+    const dir = path.join(outputDir, nome);
+    const upPath  = path.join(dir, 'youtube_upload.json');
+    const bkpPath = path.join(dir, `${nome}_drive_backup.json`);
+    if (!fs.existsSync(upPath) || !fs.existsSync(bkpPath)) continue; // sem os dois confirmados, não mexe
+
+    try {
+      const backup = JSON.parse(fs.readFileSync(bkpPath, 'utf8'));
+      const diasPassados = (agora - new Date(backup.backed_up_at).getTime()) / 86400000;
+      if (diasPassados < LIMPEZA_DIAS) continue;
+
+      fs.rmSync(dir, { recursive: true, force: true });
+      apagadas++;
+      bus.emit('log', `🧹 Pasta local apagada (já no YouTube + Drive há ${diasPassados.toFixed(1)}d): ${nome}`);
+    } catch (e) {
+      console.warn(`[Limpeza] Erro ao processar ${nome}: ${e.message}`);
+    }
+  }
+  if (apagadas === 0) bus.emit('log', '🧹 Limpeza: nada elegível pra apagar hoje');
+}
+
+function agendarLimpezaAutomatica() {
+  if (!LIMPEZA_ATIVA) {
+    console.log('[Limpeza] Desativada (LIMPEZA_ATIVA=false no .env)');
+    return;
+  }
+  const [hh, mm] = LIMPEZA_HORA.split(':').map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) {
+    console.warn(`[Limpeza] Horário inválido no .env: "${LIMPEZA_HORA}" — limpeza desativada`);
+    return;
+  }
+  cron.schedule(`${mm} ${hh} * * *`, limparVideosAntigos, { timezone: FUSO_HORARIO });
+  console.log(`[Limpeza] Agendada para ${LIMPEZA_HORA} (${FUSO_HORARIO}) — apaga pastas com YouTube+Drive confirmados há ${LIMPEZA_DIAS}+ dias`);
+}
+
+agendarLimpezaAutomatica();
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

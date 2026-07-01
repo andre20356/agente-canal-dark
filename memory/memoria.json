@@ -47,11 +47,35 @@
       "nota_qualidade": null,
       "status": "produzido",
       "metricas_reais": null
+    },
+    {
+      "tema": "A dark web e o experimento que um jornalista fez — e quase pagou com a vida",
+      "titulo": "A verdade sobre A dark web e o experimento que um jornalista",
+      "data": "2026-07-01T13:08:23.627Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "A ilha proibida onde ninguém pode entrar — e o motivo é perturbador",
+      "titulo": "A verdade sobre A ilha proibida onde ninguém pode entrar — e",
+      "data": "2026-07-01T14:15:36.741Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "O serial killer brasileiro que nunca foi identificado",
+      "titulo": "A verdade sobre O serial killer brasileiro que nunca foi ide",
+      "data": "2026-07-01T17:29:34.109Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
     }
   ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 6,
+    "total_videos": 9,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,

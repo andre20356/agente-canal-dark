@@ -3,6 +3,7 @@ require('dotenv').config({ override: true, path: path.join(__dirname, '..', '.en
 
 const { google } = require('googleapis');
 const fs         = require('fs');
+const { execFileSync } = require('child_process');
 
 const ENV_PATH = path.join(__dirname, '..', '.env');
 
@@ -101,6 +102,33 @@ function isAuthError(e) {
   );
 }
 
+// ─── Validação do arquivo de vídeo ─────────────────────────────────────────────
+
+// Confere que o arquivo é um vídeo completo e válido (não um .mp4 corrompido
+// ou ainda sendo escrito pelo ffmpeg) antes de gastar upload com ele — sem
+// isso, o YouTube aceita o upload e só falha depois no processamento dele
+// ("processamento interrompido, não foi possível processar o vídeo").
+function validarVideo(videoPath) {
+  let duracao;
+  try {
+    const out = execFileSync('ffprobe', [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', videoPath,
+    ], { encoding: 'utf8', timeout: 15000 });
+    duracao = parseFloat(out.trim());
+  } catch (e) {
+    throw new Error(
+      `Vídeo inválido/corrompido em ${videoPath} — provavelmente ainda estava sendo ` +
+      `gerado quando o upload foi iniciado, ou uma geração anterior falhou no meio. ` +
+      `Gere o vídeo novamente antes de subir. (ffprobe: ${e.message.split('\n')[0]})`
+    );
+  }
+  if (!duracao || duracao < 5) {
+    throw new Error(`Vídeo com duração inválida (${duracao || 0}s) em ${videoPath} — gere novamente antes de subir.`);
+  }
+  return duracao;
+}
+
 // ─── Upload principal ─────────────────────────────────────────────────────────
 
 async function uploadYouTube(dirOutput, opcoes = {}) {
@@ -115,6 +143,7 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
       '  Salve o .mp4 finalizado na pasta do vídeo e tente novamente.'
     );
   }
+  validarVideo(videoPath);
 
   const thumbPath   = opcoes.thumbPath   || encontrarArquivo(dirOutput, ['.jpg', '.jpeg', '.png', '.webp']);
   const titulo      = opcoes.titulo      || seo.titulo_recomendado;
@@ -202,7 +231,7 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
     JSON.stringify(resultado, null, 2)
   );
 
-  return resultado;
+  return { ...resultado, videoPath };
 }
 
 module.exports = { uploadYouTube };
