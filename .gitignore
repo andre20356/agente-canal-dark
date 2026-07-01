@@ -1,6 +1,6 @@
 node_modules/
 .env
 logs/
-output/narracoes/*.mp3
-output/thumbnails/*.png
+output/
 *.log
+*.bak.*

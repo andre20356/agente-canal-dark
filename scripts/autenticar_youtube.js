@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 /**
- * Autenticação OAuth2 do YouTube — executa UMA VEZ.
- * Salva o refresh_token no .env automaticamente.
- *
- * Como usar:
- *   node scripts/autenticar_youtube.js
+ * Autenticação OAuth2 YouTube para VPS.
+ * Usa http://localhost:4006/oauth2callback como redirect URI.
+ * O usuário cola a URL completa que aparece no navegador após autorizar.
  */
 
 require('dotenv').config();
-const { google } = require('googleapis');
-const readline = require('readline');
-const fs = require('fs');
-const path = require('path');
 
-const ENV_PATH = path.join(__dirname, '..', '.env');
+const urlModule  = require('url');
+const { google } = require('googleapis');
+const fs         = require('fs');
+const path       = require('path');
+const readline   = require('readline');
+
+const ENV_PATH     = path.join(__dirname, '..', '.env');
+const REDIRECT_URI = 'http://localhost:4006/oauth2callback';
+
+// ─── .env helpers ─────────────────────────────────────────────────────────────
 
 function lerEnv() {
   try { return fs.readFileSync(ENV_PATH, 'utf8'); } catch { return ''; }
@@ -21,117 +24,137 @@ function lerEnv() {
 
 function salvarNoEnv(chave, valor) {
   let conteudo = lerEnv();
-  const regex = new RegExp(`^${chave}=.*$`, 'm');
+  const regex  = new RegExp(`^${chave}=.*$`, 'm');
   if (regex.test(conteudo)) {
     conteudo = conteudo.replace(regex, `${chave}=${valor}`);
   } else {
-    conteudo += `\n${chave}=${valor}`;
+    conteudo = conteudo.trimEnd() + `\n${chave}=${valor}\n`;
   }
-  fs.writeFileSync(ENV_PATH, conteudo);
+  fs.writeFileSync(ENV_PATH, conteudo, 'utf8');
 }
 
-const pergunta = (txt) => {
+function perguntar(txt) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(res => rl.question(txt, ans => { rl.close(); res(ans.trim()); }));
-};
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('\n' + '═'.repeat(55));
+  console.log('\n' + '═'.repeat(57));
   console.log('  📺  AUTENTICAÇÃO YOUTUBE — ARQUIVO SOMBRIO');
-  console.log('═'.repeat(55));
-  console.log('\nEste script precisa ser executado UMA VEZ para vincular');
-  console.log('sua conta do YouTube ao sistema.\n');
+  console.log('═'.repeat(57));
 
-  // Verificar se já tem credenciais OAuth no .env
   const clientId     = process.env.YOUTUBE_CLIENT_ID;
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    console.log('⚠️  YOUTUBE_CLIENT_ID e YOUTUBE_CLIENT_SECRET não encontrados no .env\n');
-    console.log('COMO OBTER AS CREDENCIAIS:\n');
-    console.log('  1. Acesse: console.cloud.google.com');
-    console.log('  2. Selecione o mesmo projeto onde criou a chave Gemini');
-    console.log('  3. Menu → APIs e Serviços → Biblioteca');
-    console.log('  4. Busque "YouTube Data API v3" → Ativar');
-    console.log('  5. Menu → APIs e Serviços → Credenciais');
-    console.log('  6. + Criar credencial → ID do cliente OAuth 2.0');
-    console.log('  7. Tipo: Aplicativo para computador');
-    console.log('  8. Copie o Client ID e Client Secret');
-    console.log('  9. Adicione no .env:\n');
-    console.log('     YOUTUBE_CLIENT_ID=seu_client_id');
-    console.log('     YOUTUBE_CLIENT_SECRET=seu_client_secret\n');
-    console.log('Depois rode novamente: node scripts/autenticar_youtube.js\n');
+    console.log('\n❌ YOUTUBE_CLIENT_ID ou YOUTUBE_CLIENT_SECRET não configurados no .env\n');
     process.exit(1);
   }
 
-  // Verificar se já tem refresh token
   if (process.env.YOUTUBE_REFRESH_TOKEN) {
-    console.log('✅ YouTube já está autenticado!\n');
-    const resposta = await pergunta('Deseja reautenticar? (s/N): ');
-    if (resposta.toLowerCase() !== 's') { process.exit(0); }
+    console.log('\n✅ YouTube já está autenticado.\n');
+    const resp = await perguntar('  Deseja reautenticar? (s/N): ');
+    if (resp.toLowerCase() !== 's') { console.log(''); process.exit(0); }
+    salvarNoEnv('YOUTUBE_REFRESH_TOKEN', '');
   }
 
-  const oauth2 = new google.auth.OAuth2(
-    clientId,
-    clientSecret,
-    'urn:ietf:wg:oauth:2.0:oob'  // modo desktop: usuário cola o código
-  );
+  const oauth2 = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
 
   const authUrl = oauth2.generateAuthUrl({
     access_type: 'offline',
+    prompt:      'consent',
     scope: [
       'https://www.googleapis.com/auth/youtube.upload',
       'https://www.googleapis.com/auth/youtube',
     ],
-    prompt: 'consent',  // força geração de refresh_token
   });
 
-  console.log('─'.repeat(55));
-  console.log('\n1. Abra este link no navegador:\n');
-  console.log('   ' + authUrl);
-  console.log('\n2. Faça login com a conta do YouTube que receberá os vídeos');
-  console.log('3. Autorize o acesso');
-  console.log('4. Copie o código que aparecer na tela\n');
-  console.log('─'.repeat(55) + '\n');
+  console.log('\n' + '─'.repeat(57));
+  console.log('\n  PASSO 1 — No Google Cloud Console:\n');
+  console.log('  Credenciais → seu OAuth Client ID → Redirect URIs\n');
+  console.log('  Adicione exatamente:\n');
+  console.log('     http://localhost:4006/oauth2callback\n');
+  console.log('─'.repeat(57));
+  console.log('\n  PASSO 2 — Abra este link no seu celular ou computador:\n');
+  console.log('  ' + authUrl);
+  console.log('\n─'.repeat(57));
+  console.log('\n  PASSO 3 — Após clicar em "Permitir":');
+  console.log('  O navegador vai tentar abrir localhost e mostrar erro de conexão.');
+  console.log('  Isso é NORMAL. Copie a URL COMPLETA da barra do navegador.\n');
+  console.log('  Ela começa assim:');
+  console.log('  http://localhost:4006/oauth2callback?code=4/0A...\n');
+  console.log('─'.repeat(57) + '\n');
 
-  const codigo = await pergunta('Cole o código aqui: ');
-  if (!codigo) { console.log('\n❌ Nenhum código informado.\n'); process.exit(1); }
+  const input = await perguntar('  Cole a URL completa aqui: ');
 
-  console.log('\n⏳ Validando...');
-
-  try {
-    const { tokens } = await oauth2.getToken(codigo);
-    oauth2.setCredentials(tokens);
-
-    if (!tokens.refresh_token) {
-      console.log('\n⚠️  Refresh token não recebido. Tente novamente com ?prompt=consent');
-      process.exit(1);
-    }
-
-    // Salvar tokens no .env
-    salvarNoEnv('YOUTUBE_REFRESH_TOKEN', tokens.refresh_token);
-    if (tokens.access_token)  salvarNoEnv('YOUTUBE_ACCESS_TOKEN', tokens.access_token);
-
-    // Buscar nome do canal para confirmar
-    const yt = google.youtube({ version: 'v3', auth: oauth2 });
-    const canal = await yt.channels.list({ part: ['snippet'], mine: true });
-    const nomeCanal = canal.data.items?.[0]?.snippet?.title || '(desconhecido)';
-
-    console.log('\n' + '═'.repeat(55));
-    console.log('  ✅  YOUTUBE AUTENTICADO COM SUCESSO!');
-    console.log('═'.repeat(55));
-    console.log(`\n  📺 Canal: ${nomeCanal}`);
-    console.log('  🔑 Refresh token salvo no .env');
-    console.log('\n  Agora use a opção 5 no menu principal para fazer upload.\n');
-    console.log('═'.repeat(55) + '\n');
-
-  } catch (e) {
-    console.error('\n❌ Erro na autenticação:', e.message);
-    if (e.message.includes('invalid_grant')) {
-      console.log('\n  O código expirou ou já foi usado. Rode novamente e use um código novo.\n');
-    }
+  if (!input) {
+    console.log('\n❌ Nenhuma URL informada.\n');
     process.exit(1);
   }
+
+  // Extrai o code da URL colada
+  let code;
+  try {
+    const parsed = new urlModule.URL(input);
+    code = parsed.searchParams.get('code');
+    const error = parsed.searchParams.get('error');
+    if (error) throw new Error(`Acesso negado: ${error}`);
+  } catch (e) {
+    if (e.message.startsWith('Acesso negado')) throw e;
+    // Tenta extrair manualmente se a URL não for válida
+    const match = input.match(/[?&]code=([^&]+)/);
+    code = match ? decodeURIComponent(match[1]) : null;
+  }
+
+  if (!code) {
+    console.log('\n❌ Código não encontrado na URL. Verifique se colou a URL completa.\n');
+    process.exit(1);
+  }
+
+  console.log('\n  ✓ Código extraído com sucesso');
+  console.log('  ⏳ Obtendo tokens...');
+
+  const { tokens } = await oauth2.getToken(code);
+
+  if (!tokens.refresh_token) {
+    throw new Error(
+      'Refresh token não recebido.\n' +
+      '  Acesse myaccount.google.com/permissions, revogue o app e rode novamente.'
+    );
+  }
+
+  salvarNoEnv('YOUTUBE_REFRESH_TOKEN', tokens.refresh_token);
+  if (tokens.access_token) salvarNoEnv('YOUTUBE_ACCESS_TOKEN', tokens.access_token);
+
+  console.log('  ✓ Refresh Token salvo no .env');
+
+  oauth2.setCredentials(tokens);
+  const yt    = google.youtube({ version: 'v3', auth: oauth2 });
+  const canal = await yt.channels.list({ part: ['snippet'], mine: true });
+  const nomeCanal = canal.data.items?.[0]?.snippet?.title || '(desconhecido)';
+
+  console.log('\n' + '═'.repeat(57));
+  console.log('  ✅  AUTENTICAÇÃO CONCLUÍDA!');
+  console.log('═'.repeat(57));
+  console.log(`\n  📺 Canal: ${nomeCanal}`);
+  console.log('  🔑 Refresh Token salvo com sucesso');
+  console.log('\n  Upload automático pronto. Use a opção 3 no menu.\n');
+  console.log('═'.repeat(57) + '\n');
 }
 
-main();
+main().catch(e => {
+  console.error('\n❌ Erro:', e.message);
+
+  if (e.message.includes('redirect_uri_mismatch')) {
+    console.log('\n  Adicione no Google Cloud Console → Redirect URIs:\n');
+    console.log('     http://localhost:4006/oauth2callback\n');
+  } else if (e.message.includes('invalid_grant')) {
+    console.log('\n  Código expirado. Rode novamente e cole a URL mais rápido.\n');
+  } else if (e.message.includes('invalid_client')) {
+    console.log('\n  Client ID ou Secret inválidos. Verifique o .env.\n');
+  }
+
+  process.exit(1);
+});

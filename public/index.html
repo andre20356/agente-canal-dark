@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arquivo Sombrio</title>
+<style>
+:root {
+  --bg: #080808; --surface: #111; --surface2: #181818;
+  --border: #222; --text: #e0e0e0; --muted: #555;
+  --red: #c0392b; --red2: #e74c3c; --green: #27ae60; --gold: #f39c12;
+  --sidebar: 220px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { display: flex; height: 100vh; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+
+/* ─── Sidebar ─────────────────────────────────────────────────────────────── */
+aside { width: var(--sidebar); background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; flex-shrink: 0; }
+.logo { padding: 22px 20px 20px; font-size: 11px; font-weight: 800; letter-spacing: 3px;
+  color: var(--red); border-bottom: 1px solid var(--border); line-height: 1.4; }
+.logo span { display: block; font-size: 9px; color: var(--muted); font-weight: 400; letter-spacing: 1px; margin-top: 2px; }
+nav { padding: 10px 0; flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 20px;
+  color: var(--muted); font-size: 13px; cursor: pointer; transition: all .15s;
+  border-left: 2px solid transparent; user-select: none; }
+.nav-item:hover { color: var(--text); background: var(--surface2); }
+.nav-item.active { color: var(--text); background: var(--surface2); border-left-color: var(--red); }
+.nav-icon { font-size: 15px; width: 18px; text-align: center; }
+.sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+.api-pill { display: flex; align-items: center; gap: 8px; font-size: 11px;
+  color: var(--muted); margin-bottom: 8px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.dot.ok { background: var(--green); }
+.dot.err { background: var(--red2); }
+
+/* ─── Main ───────────────────────────────────────────────────────────────── */
+main { flex: 1; overflow-y: auto; padding: 32px 36px; }
+.tab { display: none; }
+.tab.active { display: block; }
+.page-title { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
+
+/* ─── Cards ──────────────────────────────────────────────────────────────── */
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 22px; }
+.card-val { font-size: 38px; font-weight: 700; color: var(--red); line-height: 1; }
+.card-lbl { font-size: 12px; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: .5px; }
+.card-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  padding: 4px 10px; border-radius: 4px; margin-top: 8px; }
+.card-badge.ok  { background: rgba(39,174,96,.12); color: var(--green); }
+.card-badge.err { background: rgba(231,76,60,.12);  color: var(--red2); }
+
+/* ─── Seção ──────────────────────────────────────────────────────────────── */
+.section { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 22px; margin-bottom: 18px; }
+.section h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+
+/* ─── Temas ──────────────────────────────────────────────────────────────── */
+.themes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.theme-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 12px; cursor: pointer; font-size: 12px; line-height: 1.4; transition: all .15s; }
+.theme-card:hover { border-color: #444; }
+.theme-card.sel { border-color: var(--red); background: rgba(192,57,43,.1); }
+.theme-cat { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+
+/* ─── Inputs / Buttons ───────────────────────────────────────────────────── */
+.input { width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 14px; color: var(--text); font-size: 13px; outline: none; }
+.input:focus { border-color: var(--red); }
+.input::placeholder { color: var(--muted); }
+.row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+.btn { padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 500; transition: all .15s; }
+.btn-red  { background: var(--red);  color: #fff; }
+.btn-red:hover  { background: var(--red2); }
+.btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: #555; }
+.btn-sm { padding: 5px 12px; font-size: 11px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ─── Console ────────────────────────────────────────────────────────────── */
+.console { background: #040404; border: 1px solid #1a1a1a; border-radius: 6px;
+  padding: 14px 16px; height: 260px; overflow-y: auto; margin-top: 14px;
+  font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.7; }
+.c-log  { color: #3ecf8e; }
+.c-err  { color: var(--red2); }
+.c-done { color: var(--gold); font-weight: 600; }
+.c-prompt { color: var(--muted); }
+
+/* ─── Table ──────────────────────────────────────────────────────────────── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tbl th { text-align: left; padding: 8px 12px; color: var(--muted); font-weight: 500;
+  border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+.tbl td { padding: 10px 12px; border-bottom: 1px solid #151515; vertical-align: middle; }
+.tbl tr:hover td { background: var(--surface2); }
+.badge { padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+.b-green  { background: rgba(39,174,96,.12); color: var(--green); }
+.b-gold   { background: rgba(243,156,18,.12); color: var(--gold); }
+.b-gray   { background: rgba(80,80,80,.2); color: #666; }
+.link { color: var(--red); text-decoration: none; }
+.link:hover { text-decoration: underline; }
+
+/* ─── YouTube ────────────────────────────────────────────────────────────── */
+.yt-status { display: flex; align-items: center; gap: 12px; padding: 14px 0; }
+.yt-status .dot { width: 10px; height: 10px; }
+.yt-status-text { font-size: 14px; }
+.yt-auth-box { background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 18px; margin-top: 14px; }
+.step { display: flex; gap: 12px; margin-bottom: 14px; align-items: flex-start; }
+.step-num { background: var(--red); color: #fff; width: 22px; height: 22px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 2px; }
+.step-body { flex: 1; font-size: 13px; line-height: 1.5; }
+.step-body small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.auth-url-box { background: #050505; border: 1px solid var(--border); border-radius: 4px;
+  padding: 10px 12px; font-size: 11px; word-break: break-all; color: #888; margin-top: 8px; }
+
+/* ─── Recent ─────────────────────────────────────────────────────────────── */
+.recent-item { display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid #151515; font-size: 12px; }
+.recent-item:last-child { border-bottom: none; }
+.recent-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 12px; }
+.recent-date  { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+
+/* ─── Divider ────────────────────────────────────────────────────────────── */
+.divider { display: flex; align-items: center; gap: 12px; margin: 14px 0;
+  font-size: 11px; color: var(--muted); }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ─── Toast ──────────────────────────────────────────────────────────────── */
+#toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px;
+  font-size: 13px; display: none; z-index: 1000; max-width: 320px; }
+#toast.show { display: block; }
+#toast.ok  { border-color: var(--green); color: var(--green); }
+#toast.err { border-color: var(--red2); color: var(--red2); }
+
+/* ─── Upload select ──────────────────────────────────────────────────────── */
+select.input { appearance: none; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<!-- ══ SIDEBAR ══════════════════════════════════════════════════════════════ -->
+<aside>
+  <div class="logo">
+    ARQUIVO SOMBRIO
+    <span>Painel de Produção</span>
+  </div>
+  <nav>
+    <div class="nav-item active" data-tab="dashboard">
+      <span class="nav-icon">▦</span> Dashboard
+    </div>
+    <div class="nav-item" data-tab="produzir">
+      <span class="nav-icon">✦</span> Produzir
+    </div>
+    <div class="nav-item" data-tab="historico">
+      <span class="nav-icon">≡</span> Histórico
+    </div>
+    <div class="nav-item" data-tab="youtube">
+      <span class="nav-icon">▶</span> YouTube
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="api-pill"><span class="dot" id="dot-gemini"></span>Gemini API</div>
+    <div class="api-pill"><span class="dot" id="dot-yt"></span>YouTube</div>
+  </div>
+</aside>
+
+<!-- ══ MAIN ════════════════════════════════════════════════════════════════ -->
+<main>
+
+  <!-- Dashboard ─────────────────────────────────────────────────────────── -->
+  <section id="tab-dashboard" class="tab active">
+    <div class="page-title">Dashboard</div>
+    <div class="stats-row">
+      <div class="card">
+        <div class="card-val" id="stat-videos">—</div>
+        <div class="card-lbl">Vídeos produzidos</div>
+      </div>
+      <div class="card">
+        <div class="card-val" id="stat-temas">—</div>
+        <div class="card-lbl">Temas disponíveis</div>
+      </div>
+      <div class="card">
+        <div class="card-lbl" style="margin-bottom:10px">APIs</div>
+        <div class="card-badge" id="badge-gemini">⬤ Gemini</div>
+        <div class="card-badge" id="badge-yt" style="margin-top:6px">⬤ YouTube</div>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Vídeos Recentes</h3>
+      <div id="recent-list"><div style="color:var(--muted);font-size:13px">Carregando...</div></div>
+    </div>
+  </section>
+
+  <!-- Produzir ──────────────────────────────────────────────────────────── -->
+  <section id="tab-produzir" class="tab">
+    <div class="page-title">Produzir Vídeo</div>
+    <div class="section">
+      <h3>Escolha um tema</h3>
+      <div class="themes-grid" id="themes-grid">
+        <div style="color:var(--muted);font-size:13px">Carregando temas...</div>
+      </div>
+      <div class="divider">ou escreva o seu</div>
+      <input class="input" id="tema-input" placeholder="Digite um tema personalizado...">
+      <div class="row">
+        <button class="btn btn-red" id="btn-produzir">Produzir Vídeo</button>
+        <span id="prod-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Console <span id="console-status" style="font-size:11px;color:var(--muted);font-weight:400"></span></h3>
+      <div class="console" id="console">
+        <div class="c-prompt">— aguardando produção —</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Histórico ─────────────────────────────────────────────────────────── -->
+  <section id="tab-historico" class="tab">
+    <div class="page-title" style="display:flex;align-items:center;gap:12px">
+      Histórico
+      <button class="btn btn-ghost btn-sm" onclick="carregarHistorico()">Atualizar</button>
+    </div>
+    <div class="section" style="padding:0;overflow:hidden">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Título</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="hist-body">
+          <tr><td colspan="4" style="color:var(--muted);padding:20px">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- YouTube ───────────────────────────────────────────────────────────── -->
+  <section id="tab-youtube" class="tab">
+    <div class="page-title">YouTube</div>
+
+    <!-- Status -->
+    <div class="section">
+      <h3>Status da Conta</h3>
+      <div class="yt-status">
+        <span class="dot" id="yt-dot"></span>
+        <span class="yt-status-text" id="yt-status-text">Verificando...</span>
+      </div>
+      <div id="yt-canal-nome" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn btn-red" id="btn-conectar">Conectar YouTube</button>
+        <button class="btn btn-ghost btn-sm" id="btn-reconectar" style="display:none">Reconectar</button>
+      </div>
+
+      <!-- Auth box (oculto por padrão) -->
+      <div class="yt-auth-box" id="yt-auth-box" style="display:none">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            Adicione no <strong>Google Cloud Console → Credenciais → Redirect URIs</strong>:
+            <div class="auth-url-box">http://localhost:4006/oauth2callback</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            Abra o link abaixo e autorize o acesso:
+            <small>Clique com botão direito → Abrir em nova aba</small>
+            <div class="auth-url-box" id="yt-auth-url-box" style="margin-top:8px">Carregando URL...</div>
+            <button class="btn btn-ghost btn-sm" style="margin-top:8px" id="btn-copy-url">Copiar URL</button>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            Após autorizar, o navegador mostrará um erro de conexão.<br>
+            Copie a URL completa da barra do navegador e cole abaixo:
+            <small>Começa com: http://localhost:4006/oauth2callback?code=...</small>
+          </div>
+        </div>
+        <input class="input" id="yt-redirect-input" placeholder="http://localhost:4006/oauth2callback?code=4/0A..." style="margin-top:10px">
+        <div class="row" style="margin-top:10px">
+          <button class="btn btn-red" id="btn-auth-submit">Confirmar Autorização</button>
+          <button class="btn btn-ghost btn-sm" onclick="fecharAuthBox()">Cancelar</button>
+        </div>
+        <div id="yt-auth-error" style="color:var(--red2);font-size:12px;margin-top:10px;display:none"></div>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="section" id="yt-upload-section" style="display:none">
+      <h3>Fazer Upload</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Selecione um vídeo que tenha o arquivo .mp4 na pasta.
+      </div>
+      <select class="input" id="upload-select" style="margin-bottom:10px">
+        <option value="">Selecione o vídeo...</option>
+      </select>
+      <select class="input" id="upload-priv" style="margin-bottom:14px">
+        <option value="private">Privado (recomendado para revisar)</option>
+        <option value="unlisted">Não listado</option>
+        <option value="public">Público</option>
+      </select>
+      <button class="btn btn-red" id="btn-upload">Fazer Upload</button>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ─── Estado ─────────────────────────────────────────────────────────────────
+
+let temaSel = null;
+let catSel  = 'misterio';
+let authUrl = '';
+
+// ─── SSE ─────────────────────────────────────────────────────────────────────
+
+function conectarSSE() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'log')   addLog(d.msg, 'c-log');
+    if (d.type === 'error') { addLog('ERRO: ' + d.msg, 'c-err'); desbloquear(); }
+    if (d.type === 'done')  {
+      if (d.upload) {
+        addLog('Upload concluído! ' + (d.url || ''), 'c-done');
+      } else {
+        addLog('Vídeo pronto: ' + d.titulo, 'c-done');
+      }
+      desbloquear();
+      carregarStats();
+    }
+  };
+  es.onerror = () => setTimeout(conectarSSE, 3000);
+}
+
+function addLog(msg, cls = 'c-log') {
+  const el   = document.getElementById('console');
+  const line = document.createElement('div');
+  line.className = cls;
+  line.textContent = '› ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function desbloquear() {
+  const btn = document.getElementById('btn-produzir');
+  btn.disabled = false;
+  btn.textContent = 'Produzir Vídeo';
+  document.getElementById('prod-status').textContent = '';
+  document.getElementById('console-status').textContent = '';
+}
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+
+async function carregarStats() {
+  const d = await api('/api/stats');
+  if (!d) return;
+
+  document.getElementById('stat-videos').textContent = d.totalVideos;
+  document.getElementById('stat-temas').textContent  = d.temasDisponiveis;
+
+  const gBadge = document.getElementById('badge-gemini');
+  gBadge.className = 'card-badge ' + (d.geminiOk ? 'ok' : 'err');
+  gBadge.textContent = (d.geminiOk ? '✓' : '✗') + ' Gemini';
+
+  const yBadge = document.getElementById('badge-yt');
+  yBadge.className = 'card-badge ' + (d.youtubeOk ? 'ok' : 'err');
+  yBadge.textContent = (d.youtubeOk ? '✓' : '✗') + ' YouTube';
+
+  document.getElementById('dot-gemini').className = 'dot ' + (d.geminiOk ? 'ok' : 'err');
+  document.getElementById('dot-yt').className     = 'dot ' + (d.youtubeOk ? 'ok' : 'err');
+
+  // YouTube tab status
+  const ytDot  = document.getElementById('yt-dot');
+  const ytText = document.getElementById('yt-status-text');
+  if (d.youtubeOk) {
+    ytDot.className = 'dot ok';
+    ytText.textContent = 'Autenticado';
+    document.getElementById('btn-conectar').style.display = 'none';
+    document.getElementById('btn-reconectar').style.display = 'inline-block';
+    document.getElementById('yt-upload-section').style.display = 'block';
+    carregarVideosUpload();
+  } else {
+    ytDot.className = 'dot err';
+    ytText.textContent = 'Não autenticado';
+    document.getElementById('btn-conectar').style.display = 'inline-block';
+    document.getElementById('btn-reconectar').style.display = 'none';
+    document.getElementById('yt-upload-section').style.display = 'none';
+  }
+
+  // Recent
+  carregarRecentes();
+}
+
+// ─── Recentes ────────────────────────────────────────────────────────────────
+
+async function carregarRecentes() {
+  const lista = await api('/api/historico');
+  const el    = document.getElementById('recent-list');
+  if (!lista || !lista.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">Nenhum vídeo ainda.</div>'; return; }
+  el.innerHTML = lista.slice(0, 6).map(v => {
+    const data = v.nome.substring(0, 10);
+    const badge = v.uploadado
+      ? '<span class="badge b-green">Publicado</span>'
+      : v.temMp4
+        ? '<span class="badge b-gold">Aguardando upload</span>'
+        : '<span class="badge b-gray">Sem vídeo</span>';
+    return `<div class="recent-item">
+      <div class="recent-title">${v.titulo}</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${badge}
+        <span class="recent-date">${data}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Temas ───────────────────────────────────────────────────────────────────
+
+async function carregarTemas() {
+  const temas = await api('/api/temas');
+  const grid  = document.getElementById('themes-grid');
+  if (!temas) return;
+  grid.innerHTML = temas.map((t, i) => `
+    <div class="theme-card" data-i="${i}" onclick="selecionarTema(this, '${esc(t.tema)}', '${esc(t.categoria)}')">
+      <div class="theme-cat">${t.categoria}</div>
+      ${t.tema}
+    </div>`).join('');
+}
+
+function selecionarTema(el, tema, cat) {
+  document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+  temaSel = tema; catSel = cat;
+  document.getElementById('tema-input').value = '';
+}
+
+// ─── Histórico ────────────────────────────────────────────────────────────────
+
+async function carregarHistorico() {
+  const lista = await api('/api/historico');
+  const tbody = document.getElementById('hist-body');
+  if (!lista || !lista.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);padding:20px;font-size:13px">Nenhum vídeo produzido ainda.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = lista.map(v => {
+    const data  = v.nome.substring(0, 10);
+    const badge = v.uploadado
+      ? '<span class="badge b-green">Publicado</span>'
+      : v.temMp4
+        ? '<span class="badge b-gold">Pronto p/ upload</span>'
+        : '<span class="badge b-gray">Sem .mp4</span>';
+    const acoes = [
+      v.url ? `<a class="link" href="${v.url}" target="_blank">Ver no YouTube</a>` : '',
+      !v.uploadado && v.temMp4
+        ? `<button class="btn btn-ghost btn-sm" onclick="uploadDoHistorico('${v.nome}')">Upload</button>`
+        : ''
+    ].filter(Boolean).join(' ');
+    return `<tr>
+      <td style="color:var(--muted)">${data}</td>
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.titulo}</td>
+      <td>${badge}</td>
+      <td>${acoes}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Produzir ─────────────────────────────────────────────────────────────────
+
+async function produzir() {
+  const temaInput = document.getElementById('tema-input').value.trim();
+  const tema = temaInput || temaSel;
+  if (!tema) { toast('Selecione um tema ou escreva um personalizado', 'err'); return; }
+
+  document.getElementById('console').innerHTML = '';
+  addLog('Iniciando produção de "' + tema + '"...', 'c-log');
+
+  const btn = document.getElementById('btn-produzir');
+  btn.disabled = true;
+  btn.textContent = 'Produzindo...';
+  document.getElementById('prod-status').textContent = 'Em andamento...';
+  document.getElementById('console-status').textContent = '● ao vivo';
+
+  const r = await api('/api/produzir', { tema, categoria: catSel });
+  if (r?.error) { toast(r.error, 'err'); desbloquear(); }
+}
+
+// ─── Upload ───────────────────────────────────────────────────────────────────
+
+async function carregarVideosUpload() {
+  const lista = await api('/api/historico');
+  const sel   = document.getElementById('upload-select');
+  sel.innerHTML = '<option value="">Selecione o vídeo...</option>';
+  if (!lista) return;
+  lista.filter(v => v.temMp4 && !v.uploadado).forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.nome;
+    opt.textContent = v.titulo.substring(0, 60);
+    sel.appendChild(opt);
+  });
+}
+
+async function fazerUpload() {
+  const nomeBase   = document.getElementById('upload-select').value;
+  const privacidade = document.getElementById('upload-priv').value;
+  if (!nomeBase) { toast('Selecione um vídeo', 'err'); return; }
+
+  irParaTab('produzir');
+  document.getElementById('console').innerHTML = '';
+
+  const r = await api('/api/youtube/upload', { nomeBase, privacidade });
+  if (r?.error) toast(r.error, 'err');
+}
+
+async function uploadDoHistorico(nomeBase) {
+  irParaTab('produzir');
+  document.getElementById('console').innerHTML = '';
+  const r = await api('/api/youtube/upload', { nomeBase, privacidade: 'private' });
+  if (r?.error) toast(r.error, 'err');
+}
+
+// ─── YouTube Auth ─────────────────────────────────────────────────────────────
+
+async function abrirAuthBox() {
+  const { url } = await api('/api/youtube/auth-url');
+  authUrl = url;
+  document.getElementById('yt-auth-url-box').textContent = url;
+  document.getElementById('yt-auth-box').style.display   = 'block';
+  document.getElementById('yt-auth-error').style.display = 'none';
+  document.getElementById('yt-redirect-input').value     = '';
+}
+
+function fecharAuthBox() {
+  document.getElementById('yt-auth-box').style.display = 'none';
+}
+
+async function confirmarAuth() {
+  const redirectUrl = document.getElementById('yt-redirect-input').value.trim();
+  if (!redirectUrl) { toast('Cole a URL do navegador', 'err'); return; }
+
+  const btn = document.getElementById('btn-auth-submit');
+  btn.disabled = true;
+  btn.textContent = 'Verificando...';
+
+  const r = await api('/api/youtube/auth', { redirectUrl });
+  btn.disabled = false;
+  btn.textContent = 'Confirmar Autorização';
+
+  if (r?.error) {
+    const errEl = document.getElementById('yt-auth-error');
+    errEl.textContent = r.error;
+    errEl.style.display = 'block';
+  } else {
+    toast('Canal "' + r.canal + '" autorizado com sucesso!', 'ok');
+    fecharAuthBox();
+    carregarStats();
+  }
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+function irParaTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + tab)?.classList.add('active');
+  document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
+  if (tab === 'historico') carregarHistorico();
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+
+async function api(url, body) {
+  try {
+    const opts = body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : {};
+    const r = await fetch(url, opts);
+    return r.json();
+  } catch (e) {
+    toast('Erro de rede', 'err');
+    return null;
+  }
+}
+
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent  = msg;
+  el.className    = `show ${type}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 3500);
+}
+
+function esc(s) { return String(s).replace(/'/g, "\\'"); }
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => irParaTab(el.dataset.tab));
+});
+
+document.getElementById('btn-produzir').addEventListener('click', produzir);
+document.getElementById('btn-conectar').addEventListener('click', abrirAuthBox);
+document.getElementById('btn-reconectar').addEventListener('click', abrirAuthBox);
+document.getElementById('btn-auth-submit').addEventListener('click', confirmarAuth);
+document.getElementById('btn-upload').addEventListener('click', fazerUpload);
+document.getElementById('btn-copy-url').addEventListener('click', () => {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = authUrl;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('URL copiada!', 'ok');
+  } catch { toast('Erro ao copiar — selecione manualmente', 'err'); }
+});
+document.getElementById('tema-input').addEventListener('input', () => {
+  if (document.getElementById('tema-input').value) {
+    document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('sel'));
+    temaSel = null;
+  }
+});
+
+conectarSSE();
+carregarStats();
+carregarTemas();
+setInterval(carregarStats, 30000);
+</script>
+</body>
+</html>

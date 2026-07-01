@@ -5,11 +5,13 @@
   "main": "cli.js",
   "scripts": {
     "start": "node cli.js",
-    "novo": "node cli.js"
+    "novo": "node cli.js",
+    "painel": "node server.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^16.4.5",
+    "express": "^5.2.1",
     "googleapis": "^173.0.0",
     "node-fetch": "^2.7.0"
   }

@@ -2,47 +2,62 @@
 
 function gerarPromptRoteiro(tema, duracaoMin = 12) {
   const palavras = duracaoMin * 130;
-  return `Você é um roteirista profissional de vídeos dark/mistérios para YouTube Brasil.
+  return `Você é um roteirista de vídeos dark/mistérios para YouTube Brasil.
 
-Crie um roteiro completo para o vídeo: "${tema}"
+Crie o texto de narração completo para o vídeo: "${tema}"
 
-REGRAS OBRIGATÓRIAS:
+REGRAS ABSOLUTAS — LEIA COM ATENÇÃO:
+- Escreva APENAS as palavras que o narrador vai falar em voz alta
+- PROIBIDO incluir: direções de cena, descrições visuais, nomes de personagens, indicações de câmera, sons de ambiente, instruções de produção
+- PROIBIDO usar formato de roteiro cinematográfico (VOZ:, NARRADOR:, (som de...), (tela preta), etc.)
+- PROIBIDO descrever o que aparece na tela ou como a imagem deve ser
+- Use apenas o texto falado — como se fosse uma narração de audiobook
 - Tom: sombrio, envolvente, cinematográfico, senso de urgência
 - Frases curtas (máximo 20 palavras cada)
 - Linguagem simples e acessível
 - Cada parágrafo deve gerar curiosidade pelo próximo
 - Use fatos reais sempre que possível
-- Coloque [PAUSA] onde a narração deve pausar dramaticamente
-- Coloque [MÚSICA INTENSA] e [MÚSICA SUAVE] para mudanças de ritmo
-- Duração alvo: ${duracaoMin} minutos (~${palavras} palavras narradas)
+- Duração alvo: ${duracaoMin} minutos (~${palavras} palavras)
 
-ESTRUTURA OBRIGATÓRIA:
+ESTRUTURA (use apenas como separadores internos — não aparecem na narração):
 
-## GANCHO (0:00 - 0:30)
-[primeiros 30 segundos — impacto imediato, deve prender o espectador antes de explicar qualquer coisa]
+## GANCHO
+[primeiros 30 segundos — impacto imediato, deve prender o espectador]
 
-## APRESENTAÇÃO (0:30 - 1:30)
-[contexto mínimo necessário — quem, onde, quando — sem revelar o mistério ainda]
+## APRESENTAÇÃO
+[contexto mínimo — quem, onde, quando — sem revelar o mistério ainda]
 
-## DESENVOLVIMENTO PARTE 1 (1:30 - 4:00)
+## DESENVOLVIMENTO 1
 [aprofundamento — começa a revelar detalhes perturbadores]
 
-## VIRADA (4:00 - 5:00)
-[primeira grande revelação — algo que muda completamente a perspectiva]
+## VIRADA
+[primeira grande revelação — algo que muda a perspectiva]
 
-## DESENVOLVIMENTO PARTE 2 (5:00 - 8:00)
-[escalada de tensão — cada parágrafo mais intenso que o anterior]
+## DESENVOLVIMENTO 2
+[escalada de tensão — cada parágrafo mais intenso]
 
-## CLÍMAX (8:00 - 10:00)
-[ponto mais intenso do vídeo — a revelação principal]
+## CLÍMAX
+[ponto mais intenso — a revelação principal]
 
-## RESOLUÇÃO (10:00 - 11:30)
-[conclui a história mas deixa uma dúvida no ar — gera comentários]
+## RESOLUÇÃO
+[conclui mas deixa uma dúvida no ar — gera comentários]
 
-## CTA (11:30 - 12:00)
-[chamada para ação natural, não forçada — leva ao próximo vídeo]
+## CTA
+[chamada para ação natural — leva ao próximo vídeo]
 
-Escreva o roteiro completo agora:`;
+EXEMPLO DO QUE É CORRETO:
+"Em 1947, algo caiu no deserto do Novo México.
+O governo disse que era um balão meteorológico.
+Mas as testemunhas contavam uma história diferente.
+Uma história que nunca deveria ser revelada."
+
+EXEMPLO DO QUE É ERRADO (NUNCA FAÇA ISSO):
+"VOZ (sussurrada): Em 1947...
+(Som de trovão ao fundo)
+NARRADOR: O governo disse...
+(Corte para imagem de jornal)"
+
+Escreva APENAS a narração agora:`;
 }
 
 function gerarPromptGancho(tema) {

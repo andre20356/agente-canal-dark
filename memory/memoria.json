@@ -1,8 +1,49 @@
 {
-  "temas_utilizados": [],
+  "temas_utilizados": [
+    {
+      "tema": "O Triângulo das Bermudas: O que o governo não quer que você saiba",
+      "titulo": "A verdade sobre O Triângulo das Bermudas: O que o governo nã",
+      "data": "2026-06-30T14:18:46.826Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "O Segredo dos Túneis Subterrâneos Que o Governo Esconde",
+      "titulo": "A verdade sobre O Segredo dos Túneis Subterrâneos Que o Gove",
+      "data": "2026-06-30T23:27:03.294Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "A Verdade Oculta Sobre a Área 51 e os Experimentos Secretos",
+      "titulo": "A verdade sobre A Verdade Oculta Sobre a Área 51 e os Experi",
+      "data": "2026-06-30T23:57:26.690Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "A morte suspeita que mudou o rumo da história e nunca foi investigada",
+      "titulo": "A verdade sobre A morte suspeita que mudou o rumo da históri",
+      "data": "2026-07-01T01:41:17.267Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "O experimento secreto do governo americano que transformou soldados em cobaias",
+      "titulo": "A verdade sobre O experimento secreto do governo americano q",
+      "data": "2026-07-01T02:30:54.128Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    }
+  ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 0,
+    "total_videos": 5,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,
@@ -16,7 +57,12 @@
     "atualizado_em": null,
     "foco_atual": "crescimento inicial — priorizar volume e consistência",
     "evitar": [],
-    "priorizar": ["mistérios históricos", "crimes reais não resolvidos", "fenômenos inexplicados", "conspirações documentadas"]
+    "priorizar": [
+      "mistérios históricos",
+      "crimes reais não resolvidos",
+      "fenômenos inexplicados",
+      "conspirações documentadas"
+    ]
   },
   "resumos_diarios": [],
   "resumos_semanais": [],
