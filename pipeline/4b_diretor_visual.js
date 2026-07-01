@@ -77,30 +77,41 @@ async function gerarPromptsComGemini(tema, cenas) {
 Tema geral do vídeo: "${tema}"
 
 Abaixo estão ${cenas.length} trechos narrados, em ordem, cada um durando poucos segundos.
-Para CADA trecho, crie um prompt de geração de imagem em INGLÊS que mostre visualmente
-o que está sendo narrado NAQUELE trecho específico — não o tema geral, o conteúdo exato dele.
+Para CADA trecho, gere duas coisas em INGLÊS que mostrem visualmente o que está sendo
+narrado NAQUELE trecho específico — não o tema geral, o conteúdo exato dele:
+
+1. "prompt": um prompt de geração de imagem por IA (detalhado, estilo cinematográfico)
+2. "stock_query": um termo de busca curto (2 a 4 palavras) para encontrar um VÍDEO de
+   banco de imagens (Pexels/Pixabay) que combine com a cena — termos genéricos e visuais
+   que existem de verdade em bancos de vídeo (ex: "dark abandoned corridor", "old newspaper
+   archive", "rainy city street night"), não termos abstratos ou muito específicos do caso
+   (evite nomes próprios, datas, jargão técnico)
 
 REGRAS:
-- Cada prompt deve ser específico ao trecho, não genérico
-- Estilo obrigatório em todos: dark cinematic atmosphere, dramatic lighting, photorealistic, no text, no watermark
+- Cada item deve ser específico ao trecho, não genérico
+- Estilo obrigatório no "prompt": dark cinematic atmosphere, dramatic lighting, photorealistic, no text, no watermark
 - Não repita a mesma composição em trechos seguidos
-- Responda APENAS com um array JSON de strings, na mesma ordem e quantidade dos trechos, nada mais
+- Responda APENAS com um array JSON de objetos {"prompt": "...", "stock_query": "..."},
+  na mesma ordem e quantidade dos trechos, nada mais
 
 TRECHOS:
 ${listaTrechos}
 
-Responda agora com o array JSON de ${cenas.length} prompts:`;
+Responda agora com o array JSON de ${cenas.length} objetos:`;
 
   let ultimoErro;
   for (const nomeModelo of MODELOS) {
     try {
       const model  = genAI.getGenerativeModel({ model: nomeModelo });
       const result = await model.generateContent(prompt);
-      const prompts = extrairJson(result.response.text());
-      if (!Array.isArray(prompts) || prompts.length !== cenas.length) {
-        throw new Error(`Esperado ${cenas.length} prompts, recebido ${Array.isArray(prompts) ? prompts.length : typeof prompts}`);
+      const itens  = extrairJson(result.response.text());
+      if (!Array.isArray(itens) || itens.length !== cenas.length) {
+        throw new Error(`Esperado ${cenas.length} itens, recebido ${Array.isArray(itens) ? itens.length : typeof itens}`);
       }
-      return prompts;
+      if (itens.some(it => !it || typeof it.prompt !== 'string' || typeof it.stock_query !== 'string')) {
+        throw new Error('Itens retornados sem "prompt"/"stock_query" válidos');
+      }
+      return itens;
     } catch (e) {
       ultimoErro = e;
       const transitorio = /503|overloaded|high demand|quota/i.test(e.message);
@@ -133,8 +144,11 @@ async function gerarPlanoVisual(tema, dirOutput, nomeBase) {
   console.log(`  [Diretor Visual] ${cenas.length} cenas sincronizadas com a narração — gerando prompts com Gemini...`);
 
   try {
-    const prompts = await gerarPromptsComGemini(tema, cenas);
-    const plano = cenas.map((c, i) => ({ start: c.start, end: c.end, texto: c.texto, prompt: prompts[i] }));
+    const itens = await gerarPromptsComGemini(tema, cenas);
+    const plano = cenas.map((c, i) => ({
+      start: c.start, end: c.end, texto: c.texto,
+      prompt: itens[i].prompt, stock_query: itens[i].stock_query,
+    }));
     fs.writeFileSync(path.join(dirOutput, `${nomeBase}_plano_visual.json`), JSON.stringify(plano, null, 2), 'utf-8');
     console.log('  [Diretor Visual] ✓ Prompts sincronizados gerados');
     return plano;

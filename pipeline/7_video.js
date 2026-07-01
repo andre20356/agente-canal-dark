@@ -10,6 +10,7 @@ const fs   = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const fetch = require('node-fetch');
+const { buscarClipeStock, baixarClipe } = require('./stock_footage');
 
 const RESOLUCAO = '1920x1080';
 const FPS       = 25;
@@ -126,10 +127,42 @@ async function gerarImagensCenas(dirOutput, nomeBase, storyboard, temaGeral, dur
     }
 
     await gerarImagemOuFallback(prompts[i], imgPath, 'Imagens', totalImagens, i);
-    imagens.push({ path: imgPath, duracao: duracaoPorImg });
+    imagens.push({ path: imgPath, duracao: duracaoPorImg, tipo: 'imagem' });
   }
 
   return imagens;
+}
+
+// Tenta vídeo de banco (Pexels/Pixabay) para a cena; cai para imagem IA se não achar.
+async function gerarCenaComStockOuIA(cena, i, dirImg, total) {
+  const clipePath = path.join(dirImg, `cena_${String(i + 1).padStart(3, '0')}_stock.mp4`);
+  const imgPath   = path.join(dirImg, `cena_${String(i + 1).padStart(3, '0')}.jpg`);
+
+  // Reutiliza o que já existir de uma execução anterior
+  if (fs.existsSync(clipePath) && fs.statSync(clipePath).size > 10000) {
+    console.log(`  [Imagens] ${i + 1}/${total} (cache vídeo) ✓`);
+    return { path: clipePath, tipo: 'video' };
+  }
+  if (fs.existsSync(imgPath) && fs.statSync(imgPath).size > 5000) {
+    console.log(`  [Imagens] ${i + 1}/${total} (cache imagem) ✓`);
+    return { path: imgPath, tipo: 'imagem' };
+  }
+
+  if (cena.stock_query) {
+    try {
+      const achado = await buscarClipeStock(cena.stock_query);
+      if (achado) {
+        await baixarClipe(achado.url, clipePath);
+        console.log(`  [Imagens] ${i + 1}/${total} — vídeo de banco: "${cena.stock_query}" ✓`);
+        return { path: clipePath, tipo: 'video' };
+      }
+    } catch (e) {
+      console.warn(`  [Imagens] ${i + 1}/${total} — stock falhou ("${cena.stock_query}"): ${e.message}`);
+    }
+  }
+
+  await gerarImagemOuFallback(cena.prompt, imgPath, 'Imagens', total, i);
+  return { path: imgPath, tipo: 'imagem' };
 }
 
 // Modo sincronizado: usa as cenas do Diretor Visual (prompt + duração real por trecho narrado)
@@ -137,22 +170,14 @@ async function gerarImagensDoPlanoVisual(dirOutput, plano) {
   const dirImg = path.join(dirOutput, 'imagens');
   fs.mkdirSync(dirImg, { recursive: true });
 
-  console.log(`  [Imagens] Gerando ${plano.length} imagens sincronizadas com a narração...`);
+  console.log(`  [Imagens] Gerando ${plano.length} cenas sincronizadas com a narração...`);
 
   const imagens = [];
   for (let i = 0; i < plano.length; i++) {
     const cena    = plano[i];
-    const imgPath = path.join(dirImg, `cena_${String(i + 1).padStart(3, '0')}.jpg`);
     const duracao = Math.max(1, cena.end - cena.start);
-
-    if (fs.existsSync(imgPath) && fs.statSync(imgPath).size > 5000) {
-      process.stdout.write(`  [Imagens] ${i + 1}/${plano.length} (cache) ✓\n`);
-      imagens.push({ path: imgPath, duracao });
-      continue;
-    }
-
-    await gerarImagemOuFallback(cena.prompt, imgPath, 'Imagens', plano.length, i);
-    imagens.push({ path: imgPath, duracao });
+    const { path: cenaPath, tipo } = await gerarCenaComStockOuIA(cena, i, dirImg, plano.length);
+    imagens.push({ path: cenaPath, duracao, tipo });
   }
 
   return imagens;
@@ -185,8 +210,14 @@ function montarSlideshow(imagens, bgPath) {
       { stdio: 'pipe', timeout: 600000 }
     );
   } else {
-    // Monta cada imagem como input separado com duração + crossfade
-    const inputs   = imagens.map(img => `-loop 1 -t ${(img.duracao + FADE).toFixed(3)} -i "${img.path}"`).join(' ');
+    // Monta cada cena como input separado com duração + crossfade.
+    // Imagem estática: -loop 1 (repete o único frame pelo tempo pedido).
+    // Vídeo de banco: -stream_loop -1 (repete o clipe inteiro se for mais curto
+    // que a duração da cena) — em ambos os casos, -t corta no tamanho exato.
+    const inputs = imagens.map(img => {
+      const flag = img.tipo === 'video' ? '-stream_loop -1' : '-loop 1';
+      return `${flag} -t ${(img.duracao + FADE).toFixed(3)} -i "${img.path}"`;
+    }).join(' ');
     const filtros  = [];
     filtros.push(`[0:v]scale=${IMG_W}:${IMG_H}:force_original_aspect_ratio=increase,crop=${IMG_W}:${IMG_H},fps=${FPS},setsar=1[v0]`);
 
@@ -241,6 +272,26 @@ function filtroTitulo(tituloPath) {
   );
 }
 
+// ── Música de fundo ────────────────────────────────────────────────────────────
+// Sorteia uma faixa royalty-free de assets/musica_fundo/ (o usuário abastece a
+// pasta manualmente — sem API, sem custo). Se a pasta estiver vazia, o vídeo
+// segue só com narração, como antes.
+
+const DIR_MUSICA_FUNDO = path.join(__dirname, '..', 'assets', 'musica_fundo');
+const VOLUME_MUSICA_FUNDO = 0.10; // baixo, só ambientação por baixo da narração
+
+function escolherMusicaFundo() {
+  try {
+    const arquivos = fs.readdirSync(DIR_MUSICA_FUNDO)
+      .filter(f => /\.(mp3|wav|m4a|ogg)$/i.test(f));
+    if (!arquivos.length) return null;
+    const escolhida = arquivos[Math.floor(Math.random() * arquivos.length)];
+    return path.join(DIR_MUSICA_FUNDO, escolhida);
+  } catch {
+    return null;
+  }
+}
+
 // ── Montagem final ────────────────────────────────────────────────────────────
 
 async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual = null) {
@@ -276,16 +327,33 @@ async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisu
   if (fs.existsSync(srtPath)) filtros.push(filtroLegendas(srtPath));
   filtros.push(filtroTitulo(tituloTxt));
 
-  // Montagem final com áudio
-  console.log('  [Vídeo] Combinando vídeo + áudio + legendas...');
-  execSync(
-    `ffmpeg -y -i "${bgPath}" -i "${audioPath}" ` +
-    `-vf "${filtros.join(',')}" ` +
-    `-c:v libx264 -preset fast -crf 22 ` +
-    `-c:a aac -b:a 128k -shortest ` +
-    `"${videoOut}"`,
-    { stdio: 'pipe', timeout: 600000 }
-  );
+  // Montagem final com áudio (+ música de fundo, se houver alguma disponível)
+  const musicaPath = escolherMusicaFundo();
+  console.log(musicaPath
+    ? `  [Vídeo] Combinando vídeo + áudio + legendas + música de fundo (${path.basename(musicaPath)})...`
+    : '  [Vídeo] Combinando vídeo + áudio + legendas (sem música de fundo — pasta assets/musica_fundo/ vazia)...');
+
+  if (musicaPath) {
+    execSync(
+      `ffmpeg -y -i "${bgPath}" -i "${audioPath}" -stream_loop -1 -i "${musicaPath}" ` +
+      `-filter_complex "[2:a]volume=${VOLUME_MUSICA_FUNDO}[mus];[1:a][mus]amix=inputs=2:duration=first:dropout_transition=0[aout]" ` +
+      `-vf "${filtros.join(',')}" ` +
+      `-map 0:v -map "[aout]" ` +
+      `-c:v libx264 -preset fast -crf 22 ` +
+      `-c:a aac -b:a 128k -shortest ` +
+      `"${videoOut}"`,
+      { stdio: 'pipe', timeout: 600000 }
+    );
+  } else {
+    execSync(
+      `ffmpeg -y -i "${bgPath}" -i "${audioPath}" ` +
+      `-vf "${filtros.join(',')}" ` +
+      `-c:v libx264 -preset fast -crf 22 ` +
+      `-c:a aac -b:a 128k -shortest ` +
+      `"${videoOut}"`,
+      { stdio: 'pipe', timeout: 600000 }
+    );
+  }
 
   // Limpeza
   try { fs.unlinkSync(bgPath); } catch {}
