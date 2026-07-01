@@ -5,6 +5,7 @@ const express    = require('express');
 const fs         = require('fs');
 const { EventEmitter } = require('events');
 const { google } = require('googleapis');
+const cron        = require('node-cron');
 
 const { gerarRoteiro }        = require('./pipeline/0_roteirista');
 const { sugerirTemas }        = require('./pipeline/1_temas');
@@ -97,6 +98,8 @@ app.get('/api/stats', (req, res) => {
     youtubeOk:        !!process.env.YOUTUBE_REFRESH_TOKEN,
     emProducao,
     emUpload,
+    agendamentoAtivo:    AGENDAMENTO_ATIVO,
+    horariosAgendados:   HORARIOS_AGENDADOS,
   });
 });
 
@@ -130,63 +133,78 @@ app.get('/api/historico', (req, res) => {
 
 // ── Produzir ──────────────────────────────────────────────────────────────────
 
+// Lógica central de produção — usada tanto pela rota manual quanto pelo agendador.
+// NÃO faz upload: o upload pro YouTube continua sendo um passo manual separado.
+const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
+  bus.emit('log', `Tema: "${tema}"`);
+  const nomeBase  = `${new Date().toISOString().split('T')[0]}_${tema.replace(/[^a-z0-9]/gi, '_').slice(0, 30).toLowerCase()}`;
+  const dirOutput = path.join(__dirname, 'output', nomeBase);
+  fs.mkdirSync(dirOutput, { recursive: true });
+
+  bus.emit('log', 'Gerando roteiro com Gemini...');
+  const roteiro = await gerarRoteiro(tema, 12);
+  fs.writeFileSync(path.join(dirOutput, `${nomeBase}_roteiro.txt`), roteiro);
+  bus.emit('log', '✓ Roteiro gerado');
+
+  bus.emit('log', 'Gerando SEO...');
+  const seo = processarSEO(tema, categoria);
+  fs.writeFileSync(path.join(dirOutput, `${nomeBase}_seo.json`), JSON.stringify(seo, null, 2));
+  bus.emit('log', '✓ SEO gerado');
+
+  bus.emit('log', 'Preparando narração...');
+  const narracao = await processarNarracao(roteiro, dirOutput, nomeBase);
+  bus.emit('log', `✓ Narração pronta (~${narracao.duracao_estimada_min} min)`);
+
+  bus.emit('log', 'Criando storyboard...');
+  const storyboard = processarStoryboard(roteiro, tema, dirOutput, nomeBase);
+  bus.emit('log', `✓ Storyboard criado (${storyboard.total_cenas} cenas)`);
+
+  bus.emit('log', 'Gerando dados da thumbnail...');
+  processarThumbnail(tema, seo, storyboard, dirOutput, nomeBase);
+  bus.emit('log', '✓ Thumbnail preparada');
+
+  if (narracao.tts_gerado && narracao.arquivo_audio) {
+    bus.emit('log', 'Diretor Visual: sincronizando cenas com a narração...');
+    const planoVisual = await gerarPlanoVisual(tema, dirOutput, nomeBase);
+    bus.emit('log', planoVisual
+      ? `✓ ${planoVisual.length} cenas sincronizadas com o áudio`
+      : '⚠ Diretor Visual indisponível — vídeo usará modo genérico');
+
+    bus.emit('log', 'Gerando imagens com IA (Pollinations)...');
+    try {
+      const videoPath = await montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual);
+      bus.emit('log', `✓ Vídeo pronto: ${path.basename(videoPath)}`);
+    } catch (e) {
+      bus.emit('log', `⚠ Montagem de vídeo falhou: ${e.message}`);
+    }
+  } else {
+    bus.emit('log', '⚠ Áudio não gerado — vídeo pulado');
+  }
+
+  memoria.registrarVideo(tema, seo.titulo_recomendado);
+  bus.emit('done', { nomeBase, titulo: seo.titulo_recomendado, duracao: narracao.duracao_estimada_min });
+});
+
+// Dispara a produção com trava de concorrência (usada pela rota e pelo agendador).
+function dispararProducao(tema, categoria, origem = 'manual') {
+  if (emProducao) {
+    bus.emit('log', `⚠ Produção "${tema}" (${origem}) ignorada — já há uma produção em andamento`);
+    return false;
+  }
+  emProducao = true;
+  produzirVideo(tema, categoria)
+    .catch(e => { console.error('[Produzir] Erro:', e.message); bus.emit('error', e.message); })
+    .finally(() => { emProducao = false; });
+  return true;
+}
+
 app.post('/api/produzir', async (req, res) => {
   if (emProducao)  return res.status(409).json({ error: 'Produção já em andamento' });
   if (!process.env.GEMINI_API_KEY) return res.status(400).json({ error: 'GEMINI_API_KEY não configurada' });
   const { tema, categoria = 'misterio' } = req.body;
   if (!tema?.trim()) return res.status(400).json({ error: 'Informe um tema' });
   res.json({ ok: true });
-  emProducao = true;
-
-  capturarLogs(async () => {
-    bus.emit('log', `Tema: "${tema}"`);
-    const nomeBase  = `${new Date().toISOString().split('T')[0]}_${tema.replace(/[^a-z0-9]/gi, '_').slice(0, 30).toLowerCase()}`;
-    const dirOutput = path.join(__dirname, 'output', nomeBase);
-    fs.mkdirSync(dirOutput, { recursive: true });
-
-    bus.emit('log', 'Gerando roteiro com Gemini...');
-    const roteiro = await gerarRoteiro(tema, 12);
-    fs.writeFileSync(path.join(dirOutput, `${nomeBase}_roteiro.txt`), roteiro);
-    bus.emit('log', '✓ Roteiro gerado');
-
-    bus.emit('log', 'Gerando SEO...');
-    const seo = processarSEO(tema, categoria);
-    fs.writeFileSync(path.join(dirOutput, `${nomeBase}_seo.json`), JSON.stringify(seo, null, 2));
-    bus.emit('log', '✓ SEO gerado');
-
-    bus.emit('log', 'Preparando narração...');
-    const narracao = await processarNarracao(roteiro, dirOutput, nomeBase);
-    bus.emit('log', `✓ Narração pronta (~${narracao.duracao_estimada_min} min)`);
-
-    bus.emit('log', 'Criando storyboard...');
-    const storyboard = processarStoryboard(roteiro, tema, dirOutput, nomeBase);
-    bus.emit('log', `✓ Storyboard criado (${storyboard.total_cenas} cenas)`);
-
-    bus.emit('log', 'Gerando dados da thumbnail...');
-    processarThumbnail(tema, seo, storyboard, dirOutput, nomeBase);
-    bus.emit('log', '✓ Thumbnail preparada');
-
-    if (narracao.tts_gerado && narracao.arquivo_audio) {
-      bus.emit('log', 'Diretor Visual: sincronizando cenas com a narração...');
-      const planoVisual = await gerarPlanoVisual(tema, dirOutput, nomeBase);
-      bus.emit('log', planoVisual
-        ? `✓ ${planoVisual.length} cenas sincronizadas com o áudio`
-        : '⚠ Diretor Visual indisponível — vídeo usará modo genérico');
-
-      bus.emit('log', 'Gerando imagens com IA (Pollinations)...');
-      try {
-        const videoPath = await montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual);
-        bus.emit('log', `✓ Vídeo pronto: ${path.basename(videoPath)}`);
-      } catch (e) {
-        bus.emit('log', `⚠ Montagem de vídeo falhou: ${e.message}`);
-      }
-    } else {
-      bus.emit('log', '⚠ Áudio não gerado — vídeo pulado');
-    }
-
-    memoria.registrarVideo(tema, seo.titulo_recomendado);
-    bus.emit('done', { nomeBase, titulo: seo.titulo_recomendado, duracao: narracao.duracao_estimada_min });
-  })().catch(e => { console.error('[Produzir] Erro:', e.message); bus.emit('error', e.message); }).finally(() => { emProducao = false; });
+  dispararProducao(tema, categoria, 'manual');
 });
 
 // ── YouTube auth URL ──────────────────────────────────────────────────────────
@@ -269,6 +287,46 @@ app.get('/api/download/:nomeBase/:arquivo', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Arquivo não encontrado' });
   res.download(filePath, arquivo);
 });
+
+// ── Agendamento automático ──────────────────────────────────────────────────────
+// Gera vídeos sozinho em horários fixos (padrão: manhã/tarde/noite), escolhendo
+// o tema com sugerirTemas() (já evita repetir temas usados). NÃO faz upload —
+// o vídeo fica pronto em output/ aguardando revisão manual antes de publicar.
+
+const FUSO_HORARIO       = process.env.AGENDAMENTO_FUSO || 'America/Sao_Paulo';
+const HORARIOS_AGENDADOS = (process.env.AGENDAMENTO_HORARIOS || '08:00,14:00,20:00')
+  .split(',').map(h => h.trim()).filter(Boolean);
+const AGENDAMENTO_ATIVO  = process.env.AGENDAMENTO_ATIVO !== 'false'; // ativo por padrão
+
+function agendarProducaoAutomatica() {
+  if (!AGENDAMENTO_ATIVO) {
+    console.log('[Agendador] Desativado (AGENDAMENTO_ATIVO=false no .env)');
+    return;
+  }
+  for (const horario of HORARIOS_AGENDADOS) {
+    const [hh, mm] = horario.split(':').map(Number);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) {
+      console.warn(`[Agendador] Horário inválido ignorado: "${horario}"`);
+      continue;
+    }
+    cron.schedule(`${mm} ${hh} * * *`, () => {
+      if (!process.env.GEMINI_API_KEY) {
+        bus.emit('log', '⏰ Agendador disparou, mas GEMINI_API_KEY não está configurada — pulando');
+        return;
+      }
+      const [sugestao] = sugerirTemas(1);
+      if (!sugestao) {
+        bus.emit('log', '⏰ Agendador disparou, mas não há temas disponíveis (todos já usados)');
+        return;
+      }
+      bus.emit('log', `⏰ Produção agendada (${horario}) — tema: "${sugestao.tema}"`);
+      dispararProducao(sugestao.tema, sugestao.categoria, `agendado ${horario}`);
+    }, { timezone: FUSO_HORARIO });
+    console.log(`[Agendador] Produção automática agendada para ${horario} (${FUSO_HORARIO})`);
+  }
+}
+
+agendarProducaoAutomatica();
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

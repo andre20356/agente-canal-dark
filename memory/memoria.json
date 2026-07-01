@@ -39,11 +39,19 @@
       "nota_qualidade": null,
       "status": "produzido",
       "metricas_reais": null
+    },
+    {
+      "tema": "O hacker que invadiu sistemas do governo e o que ele encontrou lá dentro",
+      "titulo": "A verdade sobre O hacker que invadiu sistemas do governo e o",
+      "data": "2026-07-01T12:25:03.539Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
     }
   ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 5,
+    "total_videos": 6,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,
