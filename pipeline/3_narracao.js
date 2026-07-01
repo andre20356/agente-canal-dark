@@ -33,7 +33,19 @@ function prepararTextoNarracao(texto) {
     .trim();
 }
 
-// ── VTT → SRT (agrupa palavras em legendas de 8 palavras) ─────────────────────
+// ── VTT → SRT ───────────────────────────────────────────────────────────────
+// O Edge TTS entrega uma unidade de timing por FRASE (não por palavra, apesar
+// do nome "WordBoundary") — agrupar um número fixo delas (ex: 8) vira blocos
+// de texto enormes parados na tela por 20s+ enquanto a fala já avançou muito
+// além. Em vez disso, agrupamos por DURAÇÃO máxima de leitura confortável.
+
+function vttTempoParaSegundos(t) {
+  const [h, m, sMs] = t.split(':');
+  const [s, ms] = sMs.split(/[.,]/);
+  return (+h) * 3600 + (+m) * 60 + (+s) + (+ms) / 1000;
+}
+
+const MAX_SEGUNDOS_POR_LEGENDA = 6;
 
 function vttParaSrt(vttContent) {
   const entries = [];
@@ -44,22 +56,28 @@ function vttParaSrt(vttContent) {
     const timeLine = linhas.find(l => l.includes(' --> '));
     if (!timeLine) continue;
     const [start, end] = timeLine.split(' --> ');
-    const palavra = linhas[linhas.length - 1].trim();
-    if (palavra && palavra !== 'WEBVTT') {
-      entries.push({ start: start.trim(), end: end.trim(), palavra });
+    const texto = linhas[linhas.length - 1].trim();
+    if (texto && texto !== 'WEBVTT') {
+      entries.push({ start: start.trim(), end: end.trim(), texto });
     }
   }
 
-  // Agrupa em blocos de 8 palavras
-  const POR_LINHA = 8;
-  const chunks    = [];
-  for (let i = 0; i < entries.length; i += POR_LINHA) {
-    const grupo = entries.slice(i, i + POR_LINHA);
-    chunks.push({
-      start: grupo[0].start,
-      end:   grupo[grupo.length - 1].end,
-      texto: grupo.map(e => e.palavra).join(' '),
-    });
+  // Agrupa frases consecutivas até atingir ~6s de duração acumulada
+  const chunks = [];
+  let grupo       = [];
+  let inicioGrupo = null;
+
+  for (const e of entries) {
+    if (!grupo.length) inicioGrupo = e.start;
+    grupo.push(e);
+    const duracaoAcumulada = vttTempoParaSegundos(e.end) - vttTempoParaSegundos(inicioGrupo);
+    if (duracaoAcumulada >= MAX_SEGUNDOS_POR_LEGENDA) {
+      chunks.push({ start: inicioGrupo, end: e.end, texto: grupo.map(g => g.texto).join(' ') });
+      grupo = [];
+    }
+  }
+  if (grupo.length) {
+    chunks.push({ start: inicioGrupo, end: grupo[grupo.length - 1].end, texto: grupo.map(g => g.texto).join(' ') });
   }
 
   // Gera SRT
