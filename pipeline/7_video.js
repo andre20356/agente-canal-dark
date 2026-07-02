@@ -96,7 +96,7 @@ async function gerarImagemOuFallback(prompt, imgPath, label, total, i) {
   } else {
     console.log(' ⚠ fallback escuro');
     execSync(
-      `ffmpeg -y -f lavfi -i "color=c=#050510:s=${IMG_W}x${IMG_H}" ` +
+      `ffmpeg -hide_banner -loglevel error -y -f lavfi -i "color=c=#050510:s=${IMG_W}x${IMG_H}" ` +
       `-frames:v 1 "${imgPath}"`,
       { stdio: 'pipe' }
     );
@@ -204,10 +204,10 @@ function montarSlideshow(imagens, bgPath) {
   // Para N imagens: N-1 transições
   if (total === 1) {
     execSync(
-      `ffmpeg -y -f concat -safe 0 -i "${listaPath}" ` +
+      `ffmpeg -hide_banner -loglevel error -nostats -y -f concat -safe 0 -i "${listaPath}" ` +
       `-vf "scale=${IMG_W}:${IMG_H}:force_original_aspect_ratio=increase,crop=${IMG_W}:${IMG_H},fps=${FPS}" ` +
       `-c:v libx264 -preset fast -an -t ${duracaoTotal + 2} "${bgPath}"`,
-      { stdio: 'pipe', timeout: 600000 }
+      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
     );
   } else {
     // Monta cada cena como input separado com duração + crossfade.
@@ -236,10 +236,10 @@ function montarSlideshow(imagens, bgPath) {
     }
 
     execSync(
-      `ffmpeg -y ${inputs} ` +
+      `ffmpeg -hide_banner -loglevel error -nostats -y ${inputs} ` +
       `-filter_complex "${filtros.join(';')}" ` +
       `-map "[vout]" -c:v libx264 -preset fast -an -t ${duracaoTotal + 2} "${bgPath}"`,
-      { stdio: 'pipe', timeout: 600000 }
+      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
     );
   }
 
@@ -278,7 +278,7 @@ function filtroTitulo(tituloPath) {
 // segue só com narração, como antes.
 
 const DIR_MUSICA_FUNDO = path.join(__dirname, '..', 'assets', 'musica_fundo');
-const VOLUME_MUSICA_FUNDO = 0.10; // baixo, só ambientação por baixo da narração
+const VOLUME_MUSICA_FUNDO = 0.18; // ambientação por baixo da narração, audível mas discreta
 
 function escolherMusicaFundo() {
   try {
@@ -335,23 +335,23 @@ async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisu
 
   if (musicaPath) {
     execSync(
-      `ffmpeg -y -i "${bgPath}" -i "${audioPath}" -stream_loop -1 -i "${musicaPath}" ` +
-      `-filter_complex "[2:a]volume=${VOLUME_MUSICA_FUNDO}[mus];[1:a][mus]amix=inputs=2:duration=first:dropout_transition=0[aout]" ` +
+      `ffmpeg -hide_banner -loglevel error -nostats -y -i "${bgPath}" -i "${audioPath}" -stream_loop -1 -i "${musicaPath}" ` +
+      `-filter_complex "[2:a]volume=${VOLUME_MUSICA_FUNDO}[mus];[1:a][mus]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]" ` +
       `-vf "${filtros.join(',')}" ` +
       `-map 0:v -map "[aout]" ` +
       `-c:v libx264 -preset fast -crf 22 ` +
       `-c:a aac -b:a 128k -shortest ` +
       `"${videoOut}"`,
-      { stdio: 'pipe', timeout: 600000 }
+      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
     );
   } else {
     execSync(
-      `ffmpeg -y -i "${bgPath}" -i "${audioPath}" ` +
+      `ffmpeg -hide_banner -loglevel error -nostats -y -i "${bgPath}" -i "${audioPath}" ` +
       `-vf "${filtros.join(',')}" ` +
       `-c:v libx264 -preset fast -crf 22 ` +
       `-c:a aac -b:a 128k -shortest ` +
       `"${videoOut}"`,
-      { stdio: 'pipe', timeout: 600000 }
+      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
     );
   }
 
