@@ -99,8 +99,12 @@ async function gerarAudioEdgeTTS(texto, dirOutput, nomeBase) {
   fs.writeFileSync(txtPath, texto, 'utf-8');
 
   try {
+    // Rate mais lento (-12%) tira o ar apressado/mecânico do TTS padrão e
+    // aproxima de um tom de narrador contando uma história, não lendo um
+    // texto correndo. Pitch levemente mais grave (-3Hz) dá mais gravidade.
     execSync(
       `edge-tts --file "${txtPath}" --voice ${VOICE_EDGE} ` +
+      `--rate=-12% --pitch=-3Hz ` +
       `--write-media "${mp3Path}" --write-subtitles "${vttPath}"`,
       { timeout: 120000 }
     );
