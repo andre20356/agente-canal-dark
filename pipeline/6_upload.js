@@ -60,7 +60,7 @@ function criarOAuth2() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function encontrarArquivo(dirOutput, extensoes, sufixoPreferido = null) {
+function encontrarArquivo(dirOutput, extensoes, sufixoPreferido = null, opcoes = {}) {
   const arquivos = fs.readdirSync(dirOutput);
   for (const ext of extensoes) {
     // Prefere arquivo com sufixo específico (ex: _video.mp4)
@@ -68,6 +68,10 @@ function encontrarArquivo(dirOutput, extensoes, sufixoPreferido = null) {
       const preferido = arquivos.find(f => f.toLowerCase().endsWith(sufixoPreferido + ext));
       if (preferido) return path.join(dirOutput, preferido);
     }
+    // exigirSufixo: nunca aceita outro arquivo com a mesma extensão como
+    // substituto — usado pro vídeo final, onde qualquer outro .mp4 da pasta
+    // (ex: _bg.mp4, um leftover de montagem que falhou) seria o arquivo errado.
+    if (sufixoPreferido && opcoes.exigirSufixo) continue;
     const encontrado = arquivos.find(f => f.toLowerCase().endsWith(ext));
     if (encontrado) return path.join(dirOutput, encontrado);
   }
@@ -126,6 +130,26 @@ function validarVideo(videoPath) {
   if (!duracao || duracao < 5) {
     throw new Error(`Vídeo com duração inválida (${duracao || 0}s) em ${videoPath} — gere novamente antes de subir.`);
   }
+
+  // Confere que existe faixa de áudio — um _bg.mp4 (slideshow sem áudio/legenda,
+  // que vaza quando a montagem final falha) tem vídeo válido mas SEM áudio, e
+  // passaria pela checagem de duração acima sem isso.
+  let temAudio = false;
+  try {
+    const out = execFileSync('ffprobe', [
+      '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type',
+      '-of', 'default=noprint_wrappers=1:nokey=1', videoPath,
+    ], { encoding: 'utf8', timeout: 15000 });
+    temAudio = out.trim().includes('audio');
+  } catch { /* trata como sem áudio abaixo */ }
+  if (!temAudio) {
+    throw new Error(
+      `Vídeo sem faixa de áudio em ${videoPath} — provavelmente é um _bg.mp4 (slideshow ` +
+      `bruto) que sobrou de uma montagem final que falhou (sem narração nem legenda). ` +
+      `Gere o vídeo novamente antes de subir.`
+    );
+  }
+
   return duracao;
 }
 
@@ -136,16 +160,20 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
   const yt   = google.youtube({ version: 'v3', auth });
   const seo  = carregarSEO(dirOutput);
 
-  const videoPath = opcoes.videoPath || encontrarArquivo(dirOutput, ['.mp4', '.mkv', '.mov', '.avi'], '_video');
+  // NÃO cai para "qualquer .mp4 da pasta": um _bg.mp4 (slideshow sem áudio/legenda)
+  // sobra ali quando a montagem final falha, e um fallback genérico já subiu esse
+  // arquivo errado (mudo, sem legenda) por engano no passado.
+  const videoPath = opcoes.videoPath || encontrarArquivo(dirOutput, ['.mp4', '.mkv', '.mov', '.avi'], '_video', { exigirSufixo: true });
   if (!videoPath) {
     throw new Error(
-      'Nenhum arquivo de vídeo encontrado em ' + dirOutput + '\n' +
-      '  Salve o .mp4 finalizado na pasta do vídeo e tente novamente.'
+      'Vídeo final (_video.mp4) não encontrado em ' + dirOutput + '\n' +
+      '  A montagem pode ter falhado antes de gerar o arquivo final — verifique os logs ' +
+      '  de produção e gere o vídeo novamente antes de subir.'
     );
   }
   validarVideo(videoPath);
 
-  const thumbPath   = opcoes.thumbPath   || encontrarArquivo(dirOutput, ['.jpg', '.jpeg', '.png', '.webp']);
+  const thumbPath   = opcoes.thumbPath   || encontrarArquivo(dirOutput, ['.jpg', '.jpeg', '.png', '.webp'], '_thumbnail');
   const titulo      = opcoes.titulo      || seo.titulo_recomendado;
   const descricao   = opcoes.descricao   || formatarDescricao(seo);
   const tags        = opcoes.tags        || seo.tags || [];

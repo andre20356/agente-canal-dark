@@ -6,6 +6,7 @@ const fs         = require('fs');
 const { EventEmitter } = require('events');
 const { google } = require('googleapis');
 const cron        = require('node-cron');
+const multer      = require('multer');
 
 const { gerarRoteiro }        = require('./pipeline/0_roteirista');
 const { sugerirTemas }        = require('./pipeline/1_temas');
@@ -31,6 +32,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const bus = new EventEmitter();
 bus.setMaxListeners(30);
+
+// console.log "original", capturado antes de qualquer monkey-patch (ver
+// capturarLogs abaixo) — garante que logBus() sempre chega no stdout/pm2 log,
+// mesmo chamado de dentro de um bloco capturado. Sem isso, mensagens de erro
+// via logBus(...) direto (ex: "Montagem de vídeo falhou") só
+// chegavam ao SSE do navegador e ficavam invisíveis nos logs do pm2.
+const origConsoleLog = console.log.bind(console);
+function logBus(msg) { origConsoleLog(msg); bus.emit('log', msg); }
 
 let emProducao = false;
 let emUpload   = false;
@@ -139,49 +148,51 @@ app.get('/api/historico', (req, res) => {
 // Lógica central de produção — usada tanto pela rota manual quanto pelo agendador.
 // NÃO faz upload: o upload pro YouTube continua sendo um passo manual separado.
 const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
-  bus.emit('log', `Tema: "${tema}"`);
+  logBus(`Tema: "${tema}"`);
   const nomeBase  = `${new Date().toISOString().split('T')[0]}_${tema.replace(/[^a-z0-9]/gi, '_').slice(0, 30).toLowerCase()}`;
   const dirOutput = path.join(__dirname, 'output', nomeBase);
   fs.mkdirSync(dirOutput, { recursive: true });
 
-  bus.emit('log', 'Gerando roteiro com Gemini...');
+  logBus('Gerando roteiro com Gemini...');
   const roteiro = await gerarRoteiro(tema, 12);
   fs.writeFileSync(path.join(dirOutput, `${nomeBase}_roteiro.txt`), roteiro);
-  bus.emit('log', '✓ Roteiro gerado');
+  logBus('✓ Roteiro gerado');
 
-  bus.emit('log', 'Gerando SEO...');
+  logBus('Gerando SEO...');
   const seo = processarSEO(tema, categoria);
   fs.writeFileSync(path.join(dirOutput, `${nomeBase}_seo.json`), JSON.stringify(seo, null, 2));
-  bus.emit('log', '✓ SEO gerado');
+  logBus('✓ SEO gerado');
 
-  bus.emit('log', 'Preparando narração...');
+  logBus('Preparando narração...');
   const narracao = await processarNarracao(roteiro, dirOutput, nomeBase);
-  bus.emit('log', `✓ Narração pronta (~${narracao.duracao_estimada_min} min)`);
+  logBus(`✓ Narração pronta (~${narracao.duracao_estimada_min} min)`);
 
-  bus.emit('log', 'Criando storyboard...');
+  logBus('Criando storyboard...');
   const storyboard = processarStoryboard(roteiro, tema, dirOutput, nomeBase);
-  bus.emit('log', `✓ Storyboard criado (${storyboard.total_cenas} cenas)`);
+  logBus(`✓ Storyboard criado (${storyboard.total_cenas} cenas)`);
 
-  bus.emit('log', 'Gerando dados da thumbnail...');
-  processarThumbnail(tema, seo, storyboard, dirOutput, nomeBase);
-  bus.emit('log', '✓ Thumbnail preparada');
+  logBus('Gerando miniatura...');
+  const thumbResultado = await processarThumbnail(tema, seo, storyboard, dirOutput, nomeBase);
+  logBus(thumbResultado.imagem_gerada
+    ? '✓ Miniatura gerada automaticamente'
+    : '⚠ Miniatura automática falhou — use o prompt manual salvo na pasta');
 
   if (narracao.tts_gerado && narracao.arquivo_audio) {
-    bus.emit('log', 'Diretor Visual: sincronizando cenas com a narração...');
+    logBus('Diretor Visual: sincronizando cenas com a narração...');
     const planoVisual = await gerarPlanoVisual(tema, dirOutput, nomeBase);
-    bus.emit('log', planoVisual
+    logBus(planoVisual
       ? `✓ ${planoVisual.length} cenas sincronizadas com o áudio`
       : '⚠ Diretor Visual indisponível — vídeo usará modo genérico');
 
-    bus.emit('log', 'Gerando imagens com IA (Pollinations)...');
+    logBus('Gerando imagens com IA (Pollinations)...');
     try {
       const videoPath = await montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual);
-      bus.emit('log', `✓ Vídeo pronto: ${path.basename(videoPath)}`);
+      logBus(`✓ Vídeo pronto: ${path.basename(videoPath)}`);
     } catch (e) {
-      bus.emit('log', `⚠ Montagem de vídeo falhou: ${e.message}`);
+      logBus(`⚠ Montagem de vídeo falhou: ${e.message}`);
     }
   } else {
-    bus.emit('log', '⚠ Áudio não gerado — vídeo pulado');
+    logBus('⚠ Áudio não gerado — vídeo pulado');
   }
 
   memoria.registrarVideo(tema, seo.titulo_recomendado);
@@ -191,7 +202,7 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
 // Dispara a produção com trava de concorrência (usada pela rota e pelo agendador).
 function dispararProducao(tema, categoria, origem = 'manual') {
   if (emProducao) {
-    bus.emit('log', `⚠ Produção "${tema}" (${origem}) ignorada — já há uma produção em andamento`);
+    logBus(`⚠ Produção "${tema}" (${origem}) ignorada — já há uma produção em andamento`);
     return false;
   }
   emProducao = true;
@@ -277,21 +288,21 @@ app.post('/api/youtube/upload', async (req, res) => {
   emUpload = true;
 
   capturarLogs(async () => {
-    bus.emit('log', `Iniciando upload: ${nomeBase}`);
+    logBus(`Iniciando upload: ${nomeBase}`);
     const r = await uploadYouTube(dirOutput, { privacidade });
-    bus.emit('log', `✓ Upload concluído!`);
-    bus.emit('log', `URL: ${r.url}`);
+    logBus(`✓ Upload concluído!`);
+    logBus(`URL: ${r.url}`);
 
     try {
-      bus.emit('log', 'Enviando cópia de backup pro Google Drive...');
+      logBus('Enviando cópia de backup pro Google Drive...');
       const backup = await backupParaDrive(dirOutput, r.videoPath, `${nomeBase}.mp4`);
-      bus.emit('log', `✓ Backup no Drive: ${backup.url}`);
+      logBus(`✓ Backup no Drive: ${backup.url}`);
 
       // YouTube + Drive confirmados — não precisa mais da cópia local
       fs.rmSync(dirOutput, { recursive: true, force: true });
-      bus.emit('log', `🧹 Pasta local apagada (já está no YouTube e no Drive): ${nomeBase}`);
+      logBus(`🧹 Pasta local apagada (já está no YouTube e no Drive): ${nomeBase}`);
     } catch (e) {
-      bus.emit('log', `⚠ Backup no Drive falhou (vídeo já está no YouTube, arquivo local mantido): ${e.message}`);
+      logBus(`⚠ Backup no Drive falhou (vídeo já está no YouTube, arquivo local mantido): ${e.message}`);
     }
 
     bus.emit('done', { upload: true, url: r.url });
@@ -307,6 +318,55 @@ app.get('/api/download/:nomeBase/:arquivo', (req, res) => {
   const filePath = path.join(__dirname, 'output', nomeBase, arquivo);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Arquivo não encontrado' });
   res.download(filePath, arquivo);
+});
+
+// ── Música de fundo ──────────────────────────────────────────────────────────
+// Upload manual das faixas royalty-free usadas por pipeline/7_video.js.
+
+const DIR_MUSICA_FUNDO = path.join(__dirname, 'assets', 'musica_fundo');
+fs.mkdirSync(DIR_MUSICA_FUNDO, { recursive: true });
+
+const musicaUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, DIR_MUSICA_FUNDO),
+    filename: (req, file, cb) => {
+      const nomeSeguro = Buffer.from(file.originalname, 'latin1').toString('utf8')
+        .replace(/[^a-zA-Z0-9._-]/g, '_');
+      cb(null, `${Date.now()}_${nomeSeguro}`);
+    },
+  }),
+  limits: { fileSize: 30 * 1024 * 1024, files: 10 }, // 30MB por faixa
+  fileFilter: (req, file, cb) => {
+    if (!/\.(mp3|wav|m4a|ogg)$/i.test(file.originalname)) {
+      return cb(new Error('Formato inválido — use mp3, wav, m4a ou ogg'));
+    }
+    cb(null, true);
+  },
+});
+
+app.get('/api/musica/listar', (req, res) => {
+  try {
+    const arquivos = fs.readdirSync(DIR_MUSICA_FUNDO)
+      .filter(f => /\.(mp3|wav|m4a|ogg)$/i.test(f))
+      .map(f => ({ nome: f, tamanhoMB: (fs.statSync(path.join(DIR_MUSICA_FUNDO, f)).size / 1024 / 1024).toFixed(1) }));
+    res.json(arquivos);
+  } catch { res.json([]); }
+});
+
+app.post('/api/musica/upload', (req, res) => {
+  musicaUpload.array('faixas', 10)(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    res.json({ ok: true, enviados: (req.files || []).length });
+  });
+});
+
+app.delete('/api/musica/:arquivo', (req, res) => {
+  const { arquivo } = req.params;
+  if (arquivo.includes('..') || arquivo.includes('/')) return res.status(400).end();
+  const filePath = path.join(DIR_MUSICA_FUNDO, arquivo);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Arquivo não encontrado' });
+  fs.unlinkSync(filePath);
+  res.json({ ok: true });
 });
 
 // ── Agendamento automático ──────────────────────────────────────────────────────
@@ -332,15 +392,15 @@ function agendarProducaoAutomatica() {
     }
     cron.schedule(`${mm} ${hh} * * *`, () => {
       if (!process.env.GEMINI_API_KEY) {
-        bus.emit('log', '⏰ Agendador disparou, mas GEMINI_API_KEY não está configurada — pulando');
+        logBus('⏰ Agendador disparou, mas GEMINI_API_KEY não está configurada — pulando');
         return;
       }
       const [sugestao] = sugerirTemas(1);
       if (!sugestao) {
-        bus.emit('log', '⏰ Agendador disparou, mas não há temas disponíveis (todos já usados)');
+        logBus('⏰ Agendador disparou, mas não há temas disponíveis (todos já usados)');
         return;
       }
-      bus.emit('log', `⏰ Produção agendada (${horario}) — tema: "${sugestao.tema}"`);
+      logBus(`⏰ Produção agendada (${horario}) — tema: "${sugestao.tema}"`);
       dispararProducao(sugestao.tema, sugestao.categoria, `agendado ${horario}`);
     }, { timezone: FUSO_HORARIO });
     console.log(`[Agendador] Produção automática agendada para ${horario} (${FUSO_HORARIO})`);
@@ -361,7 +421,7 @@ const LIMPEZA_HORA  = process.env.LIMPEZA_HORARIO || '04:00';
 
 function limparVideosAntigos() {
   if (emProducao || emUpload) {
-    bus.emit('log', '🧹 Limpeza adiada — produção/upload em andamento');
+    logBus('🧹 Limpeza adiada — produção/upload em andamento');
     return;
   }
   const outputDir = path.join(__dirname, 'output');
@@ -385,12 +445,12 @@ function limparVideosAntigos() {
 
       fs.rmSync(dir, { recursive: true, force: true });
       apagadas++;
-      bus.emit('log', `🧹 Pasta local apagada (já no YouTube + Drive há ${diasPassados.toFixed(1)}d): ${nome}`);
+      logBus(`🧹 Pasta local apagada (já no YouTube + Drive há ${diasPassados.toFixed(1)}d): ${nome}`);
     } catch (e) {
       console.warn(`[Limpeza] Erro ao processar ${nome}: ${e.message}`);
     }
   }
-  if (apagadas === 0) bus.emit('log', '🧹 Limpeza: nada elegível pra apagar hoje');
+  if (apagadas === 0) logBus('🧹 Limpeza: nada elegível pra apagar hoje');
 }
 
 function agendarLimpezaAutomatica() {

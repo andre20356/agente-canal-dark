@@ -211,6 +211,18 @@ select.input { appearance: none; cursor: pointer; }
       </div>
     </div>
     <div class="section">
+      <h3>Música de Fundo</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Faixas royalty-free (mp3/wav/m4a/ogg) sorteadas aleatoriamente e mixadas baixinho por baixo da narração. Sem nenhuma faixa aqui, o vídeo sai só com narração.
+      </div>
+      <input type="file" id="musica-input" accept=".mp3,.wav,.m4a,.ogg" multiple style="margin-bottom:10px">
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn btn-red" id="btn-musica-upload">Enviar Faixas</button>
+        <span id="musica-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div id="musica-lista" style="font-size:13px;color:var(--muted)">Carregando...</div>
+    </div>
+    <div class="section">
       <h3>Console <span id="console-status" style="font-size:11px;color:var(--muted);font-weight:400"></span></h3>
       <div class="console" id="console">
         <div class="c-prompt">— aguardando produção —</div>
@@ -603,6 +615,56 @@ function toast(msg, type = 'ok') {
 
 function esc(s) { return String(s).replace(/'/g, "\\'"); }
 
+// ─── Música de fundo ────────────────────────────────────────────────────────
+
+async function carregarMusicas() {
+  const r = await fetch('/api/musica/listar');
+  const lista = await r.json();
+  const el = document.getElementById('musica-lista');
+  if (!lista.length) {
+    el.innerHTML = 'Nenhuma faixa enviada ainda.';
+    return;
+  }
+  el.innerHTML = lista.map(m =>
+    `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">` +
+    `<span>🎵 ${m.nome} (${m.tamanhoMB} MB)</span>` +
+    `<button class="btn btn-ghost btn-sm" onclick="removerMusica('${esc(m.nome)}')">Remover</button>` +
+    `</div>`
+  ).join('');
+}
+
+async function enviarMusicas() {
+  const input = document.getElementById('musica-input');
+  if (!input.files.length) { toast('Selecione ao menos um arquivo', 'err'); return; }
+
+  const fd = new FormData();
+  for (const f of input.files) fd.append('faixas', f);
+
+  const btn = document.getElementById('btn-musica-upload');
+  btn.disabled = true;
+  document.getElementById('musica-status').textContent = 'Enviando...';
+
+  try {
+    const r = await fetch('/api/musica/upload', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Falha no upload');
+    toast(`${d.enviados} faixa(s) enviada(s)!`, 'ok');
+    input.value = '';
+    carregarMusicas();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('musica-status').textContent = '';
+  }
+}
+
+async function removerMusica(nome) {
+  const r = await fetch(`/api/musica/${encodeURIComponent(nome)}`, { method: 'DELETE' });
+  if (r.ok) { toast('Faixa removida', 'ok'); carregarMusicas(); }
+  else toast('Erro ao remover', 'err');
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -614,6 +676,7 @@ document.getElementById('btn-conectar').addEventListener('click', abrirAuthBox);
 document.getElementById('btn-reconectar').addEventListener('click', abrirAuthBox);
 document.getElementById('btn-auth-submit').addEventListener('click', confirmarAuth);
 document.getElementById('btn-upload').addEventListener('click', fazerUpload);
+document.getElementById('btn-musica-upload').addEventListener('click', enviarMusicas);
 document.getElementById('btn-copy-url').addEventListener('click', () => {
   try {
     const ta = document.createElement('textarea');
@@ -636,6 +699,7 @@ document.getElementById('tema-input').addEventListener('input', () => {
 conectarSSE();
 carregarStats();
 carregarTemas();
+carregarMusicas();
 setInterval(carregarStats, 30000);
 </script>
 </body>
