@@ -71,11 +71,83 @@
       "nota_qualidade": null,
       "status": "produzido",
       "metricas_reais": null
+    },
+    {
+      "tema": "# SUPER PROMPT – GERADOR DE HISTÓRIAS BÍBLICAS CINEMATOGRÁFICAS (SALMO 23)  Você é um roteirista especialista em histórias bíblicas, narrativa cinematográfica, arqueologia bíblica, contexto histórico e storytelling emocional.  Sua missão é transformar o tema do Salmo 23 em uma história envolvente, emocionante e fiel aos ensinamentos bíblicos, mantendo respeito absoluto ao texto sagrado.  ## OBJETIVO  Criar um roteiro para YouTube de aproximadamente 15 a 20 minutos, capaz de prender a atenção do início ao fim.  A narrativa deve transmitir esperança, proteção, confiança em Deus e paz, inspirada no Salmo 23.  ## ESTRUTURA  1. Gancho impactante nos primeiros 10 segundos. 2. Introdução emocional. 3. Contexto histórico do rei Davi e sua vida como pastor. 4. Explicação de cada trecho do Salmo 23 por meio de cenas narrativas. 5. Aplicação prática para os dias atuais. 6. Clímax emocionante. 7. Conclusão inspiradora. 8. Convite natural para reflexão e inscrição no canal.  ## ESTILO  * Narrativa cinematográfica. * Linguagem simples e emocionante. * Tom respeitoso e inspirador. * Descrições ricas dos cenários. * Diálogos naturais quando apropriado. * Suspense emocional entre as partes. * Ritmo crescente.  ## CENAS  Para cada cena, gerar:  * Narração completa. * Descrição do ambiente. * Personagens. * Emoções. * Iluminação. * Movimento de câmera. * Sons ambientes. * Trilha sonora sugerida.  ## PROMPTS PARA IA  Gerar um prompt em inglês para criação de imagem e outro para vídeo em IA para cada cena, com estilo:  * Ultra realistic * Cinematic * Biblical * Ancient Israel * Golden Hour * Dramatic Lighting * Volumetric Light * 8K * High Detail * Epic Composition  ## MENSAGEM FINAL  A história deve levar o espectador a compreender que Deus é o Bom Pastor, que guia, protege, consola e acompanha seu povo mesmo nos momentos mais difíceis, permanecendo fiel à mensagem do Salmo 23 e sem acrescentar doutrinas que contrariem o texto bíblico.",
+      "titulo": "A verdade sobre # SUPER PROMPT – GERADOR DE HISTÓRIAS BÍBLIC",
+      "data": "2026-07-01T21:51:38.434Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "O diário encontrado em um porão que revelou uma história apagada da história oficial",
+      "titulo": "A verdade sobre O diário encontrado em um porão que revelou ",
+      "data": "2026-07-01T22:36:41.322Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "A operação que provou que governos mentem sobre OVNIs",
+      "titulo": "A verdade sobre A operação que provou que governos mentem so",
+      "data": "2026-07-01T23:44:00.590Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "A mulher que viveu 30 anos com uma identidade falsa após fugir de um crime",
+      "titulo": "A verdade sobre A mulher que viveu 30 anos com uma identidad",
+      "data": "2026-07-02T01:34:03.645Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "A pessoa que acordou falando um idioma que nunca aprendeu",
+      "titulo": "A verdade sobre A pessoa que acordou falando um idioma que n",
+      "data": "2026-07-02T02:12:53.690Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "O caso do homem que desapareceu e reapareceu 17 anos depois sem lembrar nada",
+      "titulo": "A verdade sobre O caso do homem que desapareceu e reapareceu",
+      "data": "2026-07-02T12:01:53.995Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "Os documentos desclassificados que revelaram o que realmente aconteceu em Roswell",
+      "titulo": "A verdade sobre Os documentos desclassificados que revelaram",
+      "data": "2026-07-02T17:35:21.272Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "O caso do homem que desapareceu e reapareceu 17 anos depois sem lembrar nada",
+      "titulo": "A verdade sobre O caso do homem que desapareceu e reapareceu",
+      "data": "2026-07-02T20:26:27.904Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
+    },
+    {
+      "tema": "O lugar onde as leis da física não funcionam — e tem registro científico",
+      "titulo": "A verdade sobre O lugar onde as leis da física não funcionam",
+      "data": "2026-07-02T23:37:37.949Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
     }
   ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 9,
+    "total_videos": 18,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,
