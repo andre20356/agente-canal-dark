@@ -143,11 +143,19 @@
       "nota_qualidade": null,
       "status": "produzido",
       "metricas_reais": null
+    },
+    {
+      "tema": "O experimento secreto que vazou documentos há décadas",
+      "titulo": "A verdade sobre O experimento secreto que vazou documentos h",
+      "data": "2026-07-03T11:53:50.649Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
     }
   ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 21,
+    "total_videos": 22,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,
