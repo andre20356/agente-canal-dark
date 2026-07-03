@@ -90,6 +90,16 @@ main { flex: 1; overflow-y: auto; padding: 32px 36px; }
 .switch input:checked + .switch-track { background: rgba(39,174,96,.18); border-color: var(--green); }
 .switch input:checked + .switch-track::before { transform: translateX(20px); background: var(--green); }
 
+/* ─── Barra de progresso ─────────────────────────────────────────────────── */
+.progress-block { margin-top: 12px; }
+.progress-lbl { display: flex; justify-content: space-between; font-size: 11px;
+  color: var(--muted); margin-bottom: 5px; }
+.progress-track { width: 100%; height: 8px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0%; background: var(--red);
+  border-radius: 999px; transition: width .4s ease; }
+.progress-fill.upload { background: var(--gold); }
+
 /* ─── Console ────────────────────────────────────────────────────────────── */
 .console { background: #040404; border: 1px solid #1a1a1a; border-radius: 6px;
   padding: 14px 16px; height: 260px; overflow-y: auto; margin-top: 14px;
@@ -220,6 +230,14 @@ select.input { appearance: none; cursor: pointer; }
         <button class="btn btn-red" id="btn-produzir">Produzir Vídeo</button>
         <button class="btn btn-ghost" id="btn-cancelar" style="display:none;border-color:var(--red2);color:var(--red2)">Parar Produção</button>
         <span id="prod-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div class="progress-block" id="progress-producao" style="display:none">
+        <div class="progress-lbl"><span>Progresso da produção</span><span id="progress-producao-pct">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" id="progress-producao-fill"></div></div>
+      </div>
+      <div class="progress-block" id="progress-upload" style="display:none">
+        <div class="progress-lbl"><span>Progresso do upload</span><span id="progress-upload-pct">0%</span></div>
+        <div class="progress-track"><div class="progress-fill upload" id="progress-upload-fill"></div></div>
       </div>
     </div>
     <div class="section">
@@ -368,10 +386,12 @@ function conectarSSE() {
   es.onmessage = (e) => {
     const d = JSON.parse(e.data);
     if (d.type === 'log')   addLog(d.msg, 'c-log');
-    if (d.type === 'error') { addLog('ERRO: ' + d.msg, 'c-err'); desbloquear(); }
+    if (d.type === 'error') { addLog('ERRO: ' + d.msg, 'c-err'); desbloquear(); esconderProgresso('upload'); }
+    if (d.type === 'progress') atualizarProgresso(d.tipo, d.pct);
     if (d.type === 'done')  {
       if (d.upload) {
         addLog('Upload concluído! ' + (d.url || ''), 'c-done');
+        esconderProgresso('upload');
       } else {
         addLog('Vídeo pronto: ' + d.titulo, 'c-done');
       }
@@ -380,6 +400,18 @@ function conectarSSE() {
     }
   };
   es.onerror = () => setTimeout(conectarSSE, 3000);
+}
+
+function atualizarProgresso(tipo, pct) {
+  document.getElementById(`progress-${tipo}`).style.display = 'block';
+  document.getElementById(`progress-${tipo}-fill`).style.width = pct + '%';
+  document.getElementById(`progress-${tipo}-pct`).textContent = pct + '%';
+}
+
+function esconderProgresso(tipo) {
+  document.getElementById(`progress-${tipo}`).style.display = 'none';
+  document.getElementById(`progress-${tipo}-fill`).style.width = '0%';
+  document.getElementById(`progress-${tipo}-pct`).textContent = '0%';
 }
 
 function addLog(msg, cls = 'c-log') {
@@ -398,6 +430,7 @@ function desbloquear() {
   document.getElementById('prod-status').textContent = '';
   document.getElementById('console-status').textContent = '';
   document.getElementById('btn-cancelar').style.display = 'none';
+  esconderProgresso('producao');
 }
 
 async function cancelarProducao() {
@@ -562,6 +595,7 @@ async function produzir() {
   document.getElementById('prod-status').textContent = 'Em andamento...';
   document.getElementById('console-status').textContent = '● ao vivo';
   document.getElementById('btn-cancelar').style.display = 'inline-block';
+  atualizarProgresso('producao', 0);
 
   const r = await api('/api/produzir', { tema, categoria: catSel });
   if (r?.error) { toast(r.error, 'err'); desbloquear(); }
@@ -589,16 +623,18 @@ async function fazerUpload() {
 
   irParaTab('produzir');
   document.getElementById('console').innerHTML = '';
+  atualizarProgresso('upload', 0);
 
   const r = await api('/api/youtube/upload', { nomeBase, privacidade });
-  if (r?.error) toast(r.error, 'err');
+  if (r?.error) { toast(r.error, 'err'); esconderProgresso('upload'); }
 }
 
 async function uploadDoHistorico(nomeBase) {
   irParaTab('produzir');
   document.getElementById('console').innerHTML = '';
+  atualizarProgresso('upload', 0);
   const r = await api('/api/youtube/upload', { nomeBase, privacidade: 'private' });
-  if (r?.error) toast(r.error, 'err');
+  if (r?.error) { toast(r.error, 'err'); esconderProgresso('upload'); }
 }
 
 // ─── YouTube Auth ─────────────────────────────────────────────────────────────

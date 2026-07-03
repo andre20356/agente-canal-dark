@@ -178,6 +178,7 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
   const descricao   = opcoes.descricao   || formatarDescricao(seo);
   const tags        = opcoes.tags        || seo.tags || [];
   const privacidade = opcoes.privacidade || 'public';
+  const onProgress  = opcoes.onProgress  || (() => {});
 
   const tamanho = fs.statSync(videoPath).size;
   console.log(`  📁 Vídeo: ${path.basename(videoPath)} (${(tamanho / 1024 / 1024).toFixed(1)} MB)`);
@@ -212,6 +213,7 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
       onUploadProgress: (evt) => {
         const pct = Math.round((evt.bytesRead / tamanho) * 100);
         process.stdout.write(`\r  📤 Enviando: ${pct}% (${(evt.bytesRead / 1024 / 1024).toFixed(1)} MB)`);
+        onProgress(pct);
       },
     });
   } catch (e) {

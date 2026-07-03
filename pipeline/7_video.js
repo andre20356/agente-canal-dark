@@ -104,7 +104,7 @@ async function gerarImagemOuFallback(prompt, imgPath, label, total, i) {
 }
 
 // Modo genérico (sem Diretor Visual): ciclo fixo de variações de câmera
-async function gerarImagensCenas(dirOutput, nomeBase, storyboard, temaGeral, duracaoTotal) {
+async function gerarImagensCenas(dirOutput, nomeBase, storyboard, temaGeral, duracaoTotal, onProgress = () => {}) {
   const cenas      = storyboard?.cenas || [];
   const dirImg     = path.join(dirOutput, 'imagens');
   fs.mkdirSync(dirImg, { recursive: true });
@@ -124,11 +124,13 @@ async function gerarImagensCenas(dirOutput, nomeBase, storyboard, temaGeral, dur
     if (fs.existsSync(imgPath) && fs.statSync(imgPath).size > 5000) {
       process.stdout.write(`  [Imagens] ${i + 1}/${totalImagens} (cache) ✓\n`);
       imagens.push({ path: imgPath, duracao: duracaoPorImg });
+      onProgress((i + 1) / totalImagens);
       continue;
     }
 
     await gerarImagemOuFallback(prompts[i], imgPath, 'Imagens', totalImagens, i);
     imagens.push({ path: imgPath, duracao: duracaoPorImg, tipo: 'imagem' });
+    onProgress((i + 1) / totalImagens);
   }
 
   return imagens;
@@ -167,7 +169,7 @@ async function gerarCenaComStockOuIA(cena, i, dirImg, total) {
 }
 
 // Modo sincronizado: usa as cenas do Diretor Visual (prompt + duração real por trecho narrado)
-async function gerarImagensDoPlanoVisual(dirOutput, plano) {
+async function gerarImagensDoPlanoVisual(dirOutput, plano, onProgress = () => {}) {
   const dirImg = path.join(dirOutput, 'imagens');
   fs.mkdirSync(dirImg, { recursive: true });
 
@@ -180,6 +182,7 @@ async function gerarImagensDoPlanoVisual(dirOutput, plano) {
     const duracao = Math.max(1, cena.end - cena.start);
     const { path: cenaPath, tipo } = await gerarCenaComStockOuIA(cena, i, dirImg, plano.length);
     imagens.push({ path: cenaPath, duracao, tipo });
+    onProgress((i + 1) / plano.length);
   }
 
   return imagens;
@@ -296,7 +299,10 @@ function escolherMusicaFundo() {
 
 // ── Montagem final ────────────────────────────────────────────────────────────
 
-async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual = null) {
+// onProgress recebe uma fração 0..1 do trabalho desta função (imagens + montagem
+// + combinação final) — quem chama (server.js) decide como isso mapeia pro
+// progresso total da produção (roteiro/narração/etc. já consumiram uma parte).
+async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual = null, onProgress = () => {}) {
   const audioPath = path.join(dirOutput, `${nomeBase}_narracao.mp3`);
   const srtPath   = path.join(dirOutput, `${nomeBase}_narracao.srt`);
   const bgPath    = path.join(dirOutput, `${nomeBase}_bg.mp4`);
@@ -312,14 +318,16 @@ async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisu
 
   // Gera imagens: sincronizadas com a narração (Diretor Visual) quando disponível,
   // senão cai no modo genérico (ciclo de variações de câmera).
+  const onProgressImagens = (fracao) => onProgress(fracao * 0.7);
   const imagens = (planoVisual && planoVisual.length)
-    ? await gerarImagensDoPlanoVisual(dirOutput, planoVisual)
-    : await gerarImagensCenas(dirOutput, nomeBase, storyboard, tema || nomeBase, duracao);
+    ? await gerarImagensDoPlanoVisual(dirOutput, planoVisual, onProgressImagens)
+    : await gerarImagensCenas(dirOutput, nomeBase, storyboard, tema || nomeBase, duracao, onProgressImagens);
 
   // Monta slideshow
   console.log('  [Vídeo] Montando slideshow de imagens...');
   await montarSlideshow(imagens, bgPath);
   verificarCancelamento();
+  onProgress(0.85);
 
   // Arquivo de título
   const titulo = (seo?.titulo_recomendado || nomeBase).slice(0, 70);
@@ -357,6 +365,8 @@ async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisu
       { timeout: 1800000 }
     );
   }
+
+  onProgress(1);
 
   // Limpeza
   try { fs.unlinkSync(bgPath); } catch {}

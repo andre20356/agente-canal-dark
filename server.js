@@ -42,6 +42,10 @@ bus.setMaxListeners(30);
 const origConsoleLog = console.log.bind(console);
 function logBus(msg) { origConsoleLog(msg); bus.emit('log', msg); }
 
+// Barra de progresso do painel — evento estruturado (não texto de log) pra
+// não depender de parsear a saída do console. `tipo`: 'producao' | 'upload'.
+function emitProgresso(tipo, pct) { bus.emit('progress', { tipo, pct: Math.max(0, Math.min(100, Math.round(pct))) }); }
+
 let emProducao = false;
 let emUpload   = false;
 
@@ -89,13 +93,16 @@ app.get('/api/stream', (req, res) => {
   res.flushHeaders();
 
   const send  = (d) => res.write(`data: ${JSON.stringify(d)}\n\n`);
-  const onLog   = (msg)  => send({ type: 'log',   msg });
-  const onDone  = (data) => send({ type: 'done',  ...data });
-  const onError = (msg)  => send({ type: 'error', msg });
+  const onLog      = (msg)  => send({ type: 'log',   msg });
+  const onDone     = (data) => send({ type: 'done',  ...data });
+  const onError    = (msg)  => send({ type: 'error', msg });
+  const onProgress = (data) => send({ type: 'progress', ...data });
 
   send({ type: 'ping' });
-  bus.on('log', onLog); bus.on('done', onDone); bus.on('error', onError);
-  req.on('close', () => { bus.off('log', onLog); bus.off('done', onDone); bus.off('error', onError); });
+  bus.on('log', onLog); bus.on('done', onDone); bus.on('error', onError); bus.on('progress', onProgress);
+  req.on('close', () => {
+    bus.off('log', onLog); bus.off('done', onDone); bus.off('error', onError); bus.off('progress', onProgress);
+  });
 });
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -149,7 +156,9 @@ app.get('/api/historico', (req, res) => {
 
 async function uploadEBackup(dirOutput, nomeBase, privacidade) {
   logBus(`Iniciando upload: ${nomeBase}`);
-  const r = await uploadYouTube(dirOutput, { privacidade });
+  emitProgresso('upload', 0);
+  const r = await uploadYouTube(dirOutput, { privacidade, onProgress: (pct) => emitProgresso('upload', pct) });
+  emitProgresso('upload', 100);
   logBus(`✓ Upload concluído!`);
   logBus(`URL: ${r.url}`);
 
@@ -176,6 +185,7 @@ async function uploadEBackup(dirOutput, nomeBase, privacidade) {
 // YouTube como público assim que o vídeo fica pronto — sem revisão humana.
 const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
   logBus(`Tema: "${tema}"`);
+  emitProgresso('producao', 0);
   const nomeBase  = `${new Date().toISOString().split('T')[0]}_${tema.replace(/[^a-z0-9]/gi, '_').slice(0, 30).toLowerCase()}`;
   const dirOutput = path.join(__dirname, 'output', nomeBase);
   fs.mkdirSync(dirOutput, { recursive: true });
@@ -184,22 +194,26 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
   const roteiro = await gerarRoteiro(tema, 12);
   fs.writeFileSync(path.join(dirOutput, `${nomeBase}_roteiro.txt`), roteiro);
   logBus('✓ Roteiro gerado');
+  emitProgresso('producao', 5);
   verificarCancelamento();
 
   logBus('Gerando SEO...');
   const seo = processarSEO(tema, categoria);
   fs.writeFileSync(path.join(dirOutput, `${nomeBase}_seo.json`), JSON.stringify(seo, null, 2));
   logBus('✓ SEO gerado');
+  emitProgresso('producao', 8);
   verificarCancelamento();
 
   logBus('Preparando narração...');
   const narracao = await processarNarracao(roteiro, dirOutput, nomeBase);
   logBus(`✓ Narração pronta (~${narracao.duracao_estimada_min} min)`);
+  emitProgresso('producao', 20);
   verificarCancelamento();
 
   logBus('Criando storyboard...');
   const storyboard = processarStoryboard(roteiro, tema, dirOutput, nomeBase);
   logBus(`✓ Storyboard criado (${storyboard.total_cenas} cenas)`);
+  emitProgresso('producao', 23);
   verificarCancelamento();
 
   logBus('Gerando miniatura...');
@@ -207,6 +221,7 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
   logBus(thumbResultado.imagem_gerada
     ? '✓ Miniatura gerada automaticamente'
     : '⚠ Miniatura automática falhou — use o prompt manual salvo na pasta');
+  emitProgresso('producao', 28);
   verificarCancelamento();
 
   if (narracao.tts_gerado && narracao.arquivo_audio) {
@@ -215,10 +230,14 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
     logBus(planoVisual
       ? `✓ ${planoVisual.length} cenas sincronizadas com o áudio`
       : '⚠ Diretor Visual indisponível — vídeo usará modo genérico');
+    emitProgresso('producao', 32);
 
     logBus('Gerando imagens com IA (Pollinations)...');
     try {
-      const videoPath = await montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual);
+      // Etapas anteriores já consumiram até 32%; montarVideo relata sua própria
+      // fração 0..1 (imagens + montagem), mapeada pros 68 pontos restantes.
+      const onProgressVideo = (fracao) => emitProgresso('producao', 32 + fracao * 68);
+      const videoPath = await montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual, onProgressVideo);
       logBus(`✓ Vídeo pronto: ${path.basename(videoPath)}`);
 
       if (process.env.MODO_PUBLICO === 'true') {
@@ -240,6 +259,7 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
       }
     } catch (e) {
       if (e.cancelado) {
+        emitProgresso('producao', 0);
         logBus('🛑 Produção cancelada pelo usuário — tema fica disponível pra tentar de novo');
         return; // não registra tema como usado, não emite 'done'
       }
