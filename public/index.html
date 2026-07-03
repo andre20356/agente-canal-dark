@@ -256,6 +256,24 @@ select.input { appearance: none; cursor: pointer; }
       </div>
     </div>
     <div class="section">
+      <h3>Publicar no TikTok</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Ligado: todo upload (manual ou do Modo Público) também sobe pro TikTok, além do YouTube.
+        <b>Enquanto o app não passar pela auditoria do TikTok, o vídeo sai como privado lá</b> — isso é
+        forçado pelo TikTok, não tem como contornar. Precisa autenticar antes de ligar.
+      </div>
+      <div class="switch-row" style="margin-bottom:10px">
+        <label class="switch">
+          <input type="checkbox" id="tiktok-toggle">
+          <span class="switch-track"></span>
+        </label>
+        <span id="tiktok-status" style="font-size:13px"></span>
+      </div>
+      <div class="row">
+        <button class="btn btn-red" id="btn-tiktok-auth">Autenticar TikTok</button>
+      </div>
+    </div>
+    <div class="section">
       <h3>Música de Fundo</h3>
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
         Faixas royalty-free (mp3/wav/m4a/ogg) sorteadas aleatoriamente e mixadas baixinho por baixo da narração. Sem nenhuma faixa aqui, o vídeo sai só com narração.
@@ -485,6 +503,25 @@ async function carregarStats() {
   if (document.activeElement !== mpToggle) mpToggle.checked = !!d.modoPublico;
   mpStatus.textContent = d.modoPublico ? '🌐 Ativado — publica sozinho' : '🔒 Desligado — aguarda revisão manual';
   mpStatus.style.color = d.modoPublico ? 'var(--green)' : 'var(--muted)';
+
+  const ttToggle = document.getElementById('tiktok-toggle');
+  const ttStatus = document.getElementById('tiktok-status');
+  const btnTtAuth = document.getElementById('btn-tiktok-auth');
+  if (!d.tiktokOk) {
+    ttToggle.checked = false;
+    ttToggle.disabled = true;
+    ttStatus.textContent = '✗ Não autenticado — clique em "Autenticar TikTok" primeiro';
+    ttStatus.style.color = 'var(--muted)';
+    btnTtAuth.textContent = 'Autenticar TikTok';
+  } else {
+    ttToggle.disabled = false;
+    if (document.activeElement !== ttToggle) ttToggle.checked = !!d.publicarTiktok;
+    ttStatus.textContent = d.publicarTiktok
+      ? (d.tiktokAuditado ? '✓ Ativado — publica público' : '✓ Ativado — sai privado (app não auditado)')
+      : '✓ Autenticado — publicação desligada';
+    ttStatus.style.color = d.publicarTiktok ? 'var(--green)' : 'var(--muted)';
+    btnTtAuth.textContent = 'Reautenticar TikTok';
+  }
 
   // O upload manual (seção "Fazer Upload") tem seletor de privacidade PRÓPRIO,
   // independente do Modo Público — só afeta o auto-upload pós-produção. Aqui só
@@ -773,6 +810,26 @@ async function removerMusica(nome) {
   else toast('Erro ao remover', 'err');
 }
 
+// ─── TikTok Auth (fluxo simples via prompt — sem modal dedicado) ─────────────
+
+async function autenticarTiktok() {
+  const r1 = await api('/api/tiktok/auth-url');
+  if (r1?.error) { toast(r1.error, 'err'); return; }
+
+  window.prompt(
+    'Abra este link, autorize o app, e depois cole a URL completa que o navegador mostrar (próximo passo):',
+    r1.url
+  );
+
+  const redirectUrl = window.prompt('Cole aqui a URL completa (com ?code=...) que apareceu depois de autorizar:');
+  if (!redirectUrl) return;
+
+  const r2 = await api('/api/tiktok/auth', { redirectUrl });
+  if (r2?.error) { toast(r2.error, 'err'); return; }
+  toast('TikTok autenticado com sucesso!', 'ok');
+  carregarStats();
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -786,6 +843,19 @@ document.getElementById('btn-reconectar').addEventListener('click', abrirAuthBox
 document.getElementById('btn-auth-submit').addEventListener('click', confirmarAuth);
 document.getElementById('btn-upload').addEventListener('click', fazerUpload);
 document.getElementById('btn-musica-upload').addEventListener('click', enviarMusicas);
+document.getElementById('btn-tiktok-auth').addEventListener('click', autenticarTiktok);
+document.getElementById('tiktok-toggle').addEventListener('change', async (e) => {
+  const ativo = e.target.checked;
+  e.target.disabled = true;
+  const r = await api('/api/publicar-tiktok', { ativo });
+  e.target.disabled = false;
+  if (r?.ok) {
+    toast(ativo ? 'Publicação no TikTok ativada' : 'Publicação no TikTok desativada', 'ok');
+  } else {
+    e.target.checked = !ativo;
+    toast(r?.error || 'Erro ao mudar configuração', 'err');
+  }
+});
 document.getElementById('modo-publico-toggle').addEventListener('change', async (e) => {
   const ativo = e.target.checked;
   e.target.disabled = true;

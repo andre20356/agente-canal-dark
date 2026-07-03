@@ -16,6 +16,7 @@ const { processarStoryboard } = require('./pipeline/4_storyboard');
 const { gerarPlanoVisual }    = require('./pipeline/4b_diretor_visual');
 const { processarThumbnail }  = require('./pipeline/5_thumbnail');
 const { uploadYouTube }       = require('./pipeline/6_upload');
+const { uploadTikTok }        = require('./pipeline/6c_upload_tiktok');
 const { backupParaDrive }     = require('./pipeline/drive_backup');
 const { montarVideo }         = require('./pipeline/7_video');
 const memoria                 = require('./memory/gerenciador');
@@ -114,9 +115,12 @@ app.get('/api/stats', (req, res) => {
     temasDisponiveis: sugerirTemas(200).length,
     geminiOk:         !!process.env.GEMINI_API_KEY,
     youtubeOk:        !!process.env.YOUTUBE_REFRESH_TOKEN,
+    tiktokOk:         !!process.env.TIKTOK_REFRESH_TOKEN,
+    tiktokAuditado:   process.env.TIKTOK_AUDITADO === 'true',
     emProducao,
     emUpload,
     modoPublico:         process.env.MODO_PUBLICO === 'true',
+    publicarTiktok:      process.env.PUBLICAR_TIKTOK === 'true',
     agendamentoAtivo:    AGENDAMENTO_ATIVO,
     horariosAgendados:   HORARIOS_AGENDADOS,
     limpezaAtiva:        LIMPEZA_ATIVA,
@@ -161,6 +165,23 @@ async function uploadEBackup(dirOutput, nomeBase, privacidade) {
   emitProgresso('upload', 100);
   logBus(`✓ Upload concluído!`);
   logBus(`URL: ${r.url}`);
+
+  // TikTok é opcional e não bloqueia o fluxo do YouTube — falha aqui não
+  // impede o backup/limpeza abaixo, que já dependem só do YouTube ter subido.
+  if (process.env.PUBLICAR_TIKTOK === 'true') {
+    if (!process.env.TIKTOK_REFRESH_TOKEN) {
+      logBus('⚠ Publicar no TikTok está ativado, mas TikTok não está autenticado — pulando');
+    } else {
+      try {
+        logBus('Enviando também pro TikTok...');
+        const rt = await uploadTikTok(dirOutput, {});
+        const avisoPrivado = rt.privacidade !== 'PUBLIC_TO_EVERYONE' ? ' (privado — app ainda não auditado pelo TikTok)' : '';
+        logBus(`✓ TikTok publicado${avisoPrivado}`);
+      } catch (e) {
+        logBus(`⚠ Upload pro TikTok falhou (YouTube já publicado normalmente): ${e.message}`);
+      }
+    }
+  }
 
   try {
     logBus('Enviando cópia de backup pro Google Drive...');
@@ -386,6 +407,96 @@ app.post('/api/youtube/upload', async (req, res) => {
     const r = await uploadEBackup(dirOutput, nomeBase, privacidade);
     bus.emit('done', { upload: true, url: r.url });
   })().catch(e => { console.error('[Upload] Erro:', e.message); bus.emit('error', e.message); }).finally(() => { emUpload = false; });
+});
+
+// ── TikTok auth URL ───────────────────────────────────────────────────────────
+
+app.get('/api/tiktok/auth-url', (req, res) => {
+  const clientKey = process.env.TIKTOK_CLIENT_KEY;
+  if (!clientKey) return res.status(400).json({ error: 'TIKTOK_CLIENT_KEY não configurado no .env' });
+  const url = 'https://www.tiktok.com/v2/auth/authorize/?' + new URLSearchParams({
+    client_key:    clientKey,
+    scope:         'user.info.basic,video.publish',
+    response_type: 'code',
+    redirect_uri:  REDIRECT,
+    state:         Math.random().toString(36).slice(2),
+  });
+  res.json({ url });
+});
+
+// ── TikTok trocar código ──────────────────────────────────────────────────────
+
+app.post('/api/tiktok/auth', async (req, res) => {
+  try {
+    const { redirectUrl } = req.body;
+    if (!redirectUrl) return res.status(400).json({ error: 'redirectUrl obrigatório' });
+
+    let code;
+    try {
+      const p = new URL(redirectUrl);
+      const e = p.searchParams.get('error');
+      if (e) return res.status(400).json({ error: `Acesso negado: ${e}` });
+      code = p.searchParams.get('code');
+    } catch {
+      const m = redirectUrl.match(/[?&]code=([^&]+)/);
+      code = m ? decodeURIComponent(m[1]) : null;
+    }
+    if (!code) return res.status(400).json({ error: 'Código não encontrado. Copie a URL completa do navegador.' });
+
+    const clientKey    = process.env.TIKTOK_CLIENT_KEY;
+    const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+    if (!clientKey || !clientSecret) return res.status(400).json({ error: 'TIKTOK_CLIENT_KEY/SECRET não configurados no .env' });
+
+    const r = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_key: clientKey, client_secret: clientSecret,
+        code, grant_type: 'authorization_code', redirect_uri: REDIRECT,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok || data.error) return res.status(500).json({ error: data.error_description || data.error || `HTTP ${r.status}` });
+
+    salvarEnv('TIKTOK_ACCESS_TOKEN', data.access_token);
+    salvarEnv('TIKTOK_REFRESH_TOKEN', data.refresh_token);
+    salvarEnv('TIKTOK_TOKEN_EXPIRES_AT', String(Date.now() + data.expires_in * 1000));
+    salvarEnv('TIKTOK_OPEN_ID', data.open_id);
+
+    res.json({ ok: true, openId: data.open_id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── TikTok upload manual ──────────────────────────────────────────────────────
+
+app.post('/api/tiktok/upload', async (req, res) => {
+  if (emUpload) return res.status(409).json({ error: 'Upload já em andamento' });
+  if (emProducao) return res.status(409).json({ error: 'Aguarde a produção atual terminar antes de subir' });
+  if (!process.env.TIKTOK_REFRESH_TOKEN) return res.status(400).json({ error: 'TikTok não autenticado' });
+  const { nomeBase } = req.body;
+  if (!nomeBase) return res.status(400).json({ error: 'nomeBase obrigatório' });
+  const dirOutput = path.join(__dirname, 'output', nomeBase);
+  if (!fs.existsSync(dirOutput)) return res.status(404).json({ error: 'Pasta não encontrada' });
+  res.json({ ok: true });
+  emUpload = true;
+
+  capturarLogs(async () => {
+    const r = await uploadTikTok(dirOutput, { onProgress: (pct) => emitProgresso('upload', pct) });
+    bus.emit('done', { upload: true, tiktok: true, privacidade: r.privacidade });
+  })().catch(e => { console.error('[Upload TikTok] Erro:', e.message); bus.emit('error', e.message); }).finally(() => { emUpload = false; });
+});
+
+// ── Publicar também no TikTok (liga/desliga, junto do upload no YouTube) ─────
+
+app.post('/api/publicar-tiktok', (req, res) => {
+  const ativo = !!req.body?.ativo;
+  salvarEnv('PUBLICAR_TIKTOK', ativo ? 'true' : 'false');
+  logBus(ativo
+    ? '🎵 Publicar no TikTok ATIVADO — próximos uploads também vão pro TikTok'
+    : '🎵 Publicar no TikTok desativado — uploads seguem só pro YouTube');
+  res.json({ ok: true, ativo });
 });
 
 // ── Modo público (liga/desliga publicação automática pós-produção) ───────────

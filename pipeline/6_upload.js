@@ -264,4 +264,4 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
   return { ...resultado, videoPath };
 }
 
-module.exports = { uploadYouTube };
+module.exports = { uploadYouTube, encontrarArquivo, carregarSEO, validarVideo, salvarNoEnv };
