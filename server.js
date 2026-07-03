@@ -208,7 +208,7 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
   const narracao = await processarNarracao(roteiro, dirOutput, nomeBase);
   logBus(narracao.tts_gerado
     ? `✓ Narração pronta (~${narracao.duracao_estimada_min} min)`
-    : '⚠ Narração falhou (Edge TTS e ElevenLabs indisponíveis) — veja os logs acima pro motivo exato');
+    : '⚠ Narração falhou (Edge TTS indisponível) — veja os logs acima pro motivo exato');
   emitProgresso('producao', 20);
   verificarCancelamento();
 
@@ -269,7 +269,7 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
     }
   } else {
     logBus('⚠ Áudio não gerado — vídeo pulado, tema fica disponível pra tentar de novo');
-    bus.emit('error', 'Narração falhou (Edge TTS e ElevenLabs indisponíveis) — tema fica disponível pra tentar de novo');
+    bus.emit('error', 'Narração falhou (Edge TTS indisponível) — tema fica disponível pra tentar de novo');
     return; // não registra tema como usado, não emite 'done' — nada foi produzido de fato
   }
 

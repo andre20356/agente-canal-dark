@@ -1,7 +1,6 @@
 const fs   = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const config = require('../config/config');
 
 const VOICE_EDGE = 'pt-BR-ThalitaMultilingualNeural';
 
@@ -90,7 +89,7 @@ function vttParaSrt(vttContent) {
 
 // ── Edge TTS (gratuito, sem API key) ─────────────────────────────────────────
 
-async function gerarAudioEdgeTTS(texto, dirOutput, nomeBase, tentativas = 2) {
+async function gerarAudioEdgeTTS(texto, dirOutput, nomeBase, tentativas = 3) {
   const txtPath = path.join(dirOutput, `${nomeBase}_narracao_input.txt`);
   const mp3Path = path.join(dirOutput, `${nomeBase}_narracao.mp3`);
   const vttPath = path.join(dirOutput, `${nomeBase}_narracao.vtt`);
@@ -127,43 +126,6 @@ async function gerarAudioEdgeTTS(texto, dirOutput, nomeBase, tentativas = 2) {
   return null;
 }
 
-// ── ElevenLabs (opcional, se tiver chave) ─────────────────────────────────────
-
-async function gerarAudioElevenLabs(texto, dirOutput, nomeBase) {
-  if (!config.apis.elevenlabs) return null;
-  try {
-    const fetch  = require('node-fetch');
-    const res    = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${config.elevenlabs.voiceId}`,
-      {
-        method:  'POST',
-        headers: { 'xi-api-key': config.apis.elevenlabs, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          text: texto.slice(0, 4900),
-          model_id: config.elevenlabs.model,
-          voice_settings: {
-            stability:        config.elevenlabs.stability,
-            similarity_boost: config.elevenlabs.similarityBoost,
-            style:            config.elevenlabs.style,
-            use_speaker_boost: true,
-          },
-        }),
-      }
-    );
-    if (!res.ok) {
-      const corpo = await res.text().catch(() => '');
-      console.warn(`[Narração] ElevenLabs falhou (HTTP ${res.status}): ${corpo.slice(0, 300)}`);
-      return null;
-    }
-    const mp3Path = path.join(dirOutput, `${nomeBase}_narracao.mp3`);
-    fs.writeFileSync(mp3Path, await res.buffer());
-    return { mp3: mp3Path, srt: null };
-  } catch (e) {
-    console.warn(`[Narração] ElevenLabs falhou: ${e.message}`);
-    return null;
-  }
-}
-
 // ── Principal ─────────────────────────────────────────────────────────────────
 
 async function processarNarracao(textoRoteiro, dirOutput, nomeBase) {
@@ -174,14 +136,9 @@ async function processarNarracao(textoRoteiro, dirOutput, nomeBase) {
   const totalPalavras      = texto.split(/\s+/).length;
   const duracaoEstimadaMin = Math.round(totalPalavras / 130);
 
-  // 1. Edge TTS (gratuito, padrão)
-  let audio = await gerarAudioEdgeTTS(texto, dirOutput, nomeBase);
-
-  // 2. Fallback ElevenLabs (se Edge TTS falhar e a chave estiver configurada)
-  if (!audio && config.apis.elevenlabs) {
-    console.log('  [Narração] Edge TTS falhou, tentando ElevenLabs...');
-    audio = await gerarAudioElevenLabs(texto, dirOutput, nomeBase);
-  }
+  // Edge TTS é o único motor (gratuito) — sem fallback pago. Se falhar nas 3
+  // tentativas, a produção é abortada sem gastar o tema (ver server.js).
+  const audio = await gerarAudioEdgeTTS(texto, dirOutput, nomeBase);
 
   return {
     arquivo_texto: txtPath,

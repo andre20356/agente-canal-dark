@@ -27,7 +27,6 @@ function cabecalho() {
   console.log(`  📊  Vídeos produzidos: ${mem.metricas_globais.total_videos}`);
   const apis = [];
   if (config.apis.gemini)            apis.push('🤖 Gemini');
-  if (config.apis.elevenlabs)        apis.push('🎙️ ElevenLabs');
   if (process.env.YOUTUBE_REFRESH_TOKEN) apis.push('📺 YouTube');
   if (!apis.length) apis.push('⚠️  Sem APIs configuradas');
   console.log(`  🔌  ${apis.join(' | ')}`);
