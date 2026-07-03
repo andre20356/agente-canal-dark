@@ -10,7 +10,9 @@ const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const config = require('../config/config');
 
-const MODELOS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+// gemini-1.5-flash/pro foram descontinuados pelo Google (retornam 404) — lista
+// atualizada 2026-07-03 com modelos confirmados via /v1beta/models?key=...
+const MODELOS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'];
 const SEGUNDOS_POR_CENA = 14;
 
 // ── Parser de SRT ──────────────────────────────────────────────────────────────
@@ -114,7 +116,7 @@ Responda agora com o array JSON de ${cenas.length} objetos:`;
       return itens;
     } catch (e) {
       ultimoErro = e;
-      const transitorio = /503|overloaded|high demand|quota/i.test(e.message);
+      const transitorio = /503|overloaded|high demand|quota|404|Not Found/i.test(e.message);
       if (transitorio) { console.log(`  [Diretor Visual] ${nomeModelo} indisponível, tentando próximo modelo...`); continue; }
       throw e;
     }
