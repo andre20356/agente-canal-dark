@@ -151,11 +151,19 @@
       "nota_qualidade": null,
       "status": "produzido",
       "metricas_reais": null
+    },
+    {
+      "tema": "O projeto que tentava controlar mentes humanas — e quase funcionou",
+      "titulo": "A verdade sobre O projeto que tentava controlar mentes human",
+      "data": "2026-07-03T00:30:38.034Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
     }
   ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 19,
+    "total_videos": 20,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,

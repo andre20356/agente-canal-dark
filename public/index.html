@@ -354,7 +354,9 @@ select.input { appearance: none; cursor: pointer; }
     <div class="section" id="yt-upload-section" style="display:none">
       <h3>Fazer Upload</h3>
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
-        Selecione um vídeo que tenha o arquivo .mp4 na pasta.
+        Selecione um vídeo que tenha o arquivo .mp4 na pasta. A privacidade abaixo
+        é só deste upload manual — o Modo Público (aba Produzir) só se aplica ao
+        upload automático que acontece assim que um vídeo termina de produzir.
       </div>
       <select class="input" id="upload-select" style="margin-bottom:10px">
         <option value="">Selecione o vídeo...</option>
@@ -376,6 +378,7 @@ select.input { appearance: none; cursor: pointer; }
 // ─── Estado ─────────────────────────────────────────────────────────────────
 
 let temaSel = null;
+let ultimoModoPublico = null; // detecta transição do toggle pra sincronizar o dropdown de upload manual
 let catSel  = 'misterio';
 let authUrl = '';
 
@@ -482,6 +485,16 @@ async function carregarStats() {
   if (document.activeElement !== mpToggle) mpToggle.checked = !!d.modoPublico;
   mpStatus.textContent = d.modoPublico ? '🌐 Ativado — publica sozinho' : '🔒 Desligado — aguarda revisão manual';
   mpStatus.style.color = d.modoPublico ? 'var(--green)' : 'var(--muted)';
+
+  // O upload manual (seção "Fazer Upload") tem seletor de privacidade PRÓPRIO,
+  // independente do Modo Público — só afeta o auto-upload pós-produção. Aqui só
+  // sincroniza o valor padrão do dropdown quando o toggle MUDA de estado, sem
+  // sobrescrever se você já tiver escolhido outra opção manualmente.
+  if (d.modoPublico !== ultimoModoPublico) {
+    const selPriv = document.getElementById('upload-priv');
+    if (document.activeElement !== selPriv) selPriv.value = d.modoPublico ? 'public' : 'private';
+    ultimoModoPublico = d.modoPublico;
+  }
 
   // YouTube tab status
   const ytDot  = document.getElementById('yt-dot');
