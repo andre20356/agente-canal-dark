@@ -79,6 +79,17 @@ main { flex: 1; overflow-y: auto; padding: 32px 36px; }
 .btn-sm { padding: 5px 12px; font-size: 11px; }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
 
+/* ─── Switch (toggle) ────────────────────────────────────────────────────── */
+.switch-row { display: flex; align-items: center; gap: 14px; }
+.switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-track { position: absolute; inset: 0; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 999px; cursor: pointer; transition: all .2s; }
+.switch-track::before { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px;
+  background: var(--muted); border-radius: 50%; transition: all .2s; }
+.switch input:checked + .switch-track { background: rgba(39,174,96,.18); border-color: var(--green); }
+.switch input:checked + .switch-track::before { transform: translateX(20px); background: var(--green); }
+
 /* ─── Console ────────────────────────────────────────────────────────────── */
 .console { background: #040404; border: 1px solid #1a1a1a; border-radius: 6px;
   padding: 14px 16px; height: 260px; overflow-y: auto; margin-top: 14px;
@@ -208,6 +219,21 @@ select.input { appearance: none; cursor: pointer; }
       <div class="row">
         <button class="btn btn-red" id="btn-produzir">Produzir Vídeo</button>
         <span id="prod-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+    <div class="section">
+      <h3>Modo Público</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Desligado (padrão): todo vídeo produzido fica em <b>Vídeos Recentes</b> aguardando você revisar e
+        clicar em Upload. Ligado: assim que o vídeo fica pronto (manual ou agendado), o sistema já publica
+        sozinho no YouTube como público, sem revisão.
+      </div>
+      <div class="switch-row">
+        <label class="switch">
+          <input type="checkbox" id="modo-publico-toggle">
+          <span class="switch-track"></span>
+        </label>
+        <span id="modo-publico-status" style="font-size:13px"></span>
       </div>
     </div>
     <div class="section">
@@ -391,6 +417,12 @@ async function carregarStats() {
 
   document.getElementById('dot-gemini').className = 'dot ' + (d.geminiOk ? 'ok' : 'err');
   document.getElementById('dot-yt').className     = 'dot ' + (d.youtubeOk ? 'ok' : 'err');
+
+  const mpToggle = document.getElementById('modo-publico-toggle');
+  const mpStatus = document.getElementById('modo-publico-status');
+  if (document.activeElement !== mpToggle) mpToggle.checked = !!d.modoPublico;
+  mpStatus.textContent = d.modoPublico ? '🌐 Ativado — publica sozinho' : '🔒 Desligado — aguarda revisão manual';
+  mpStatus.style.color = d.modoPublico ? 'var(--green)' : 'var(--muted)';
 
   // YouTube tab status
   const ytDot  = document.getElementById('yt-dot');
@@ -677,6 +709,19 @@ document.getElementById('btn-reconectar').addEventListener('click', abrirAuthBox
 document.getElementById('btn-auth-submit').addEventListener('click', confirmarAuth);
 document.getElementById('btn-upload').addEventListener('click', fazerUpload);
 document.getElementById('btn-musica-upload').addEventListener('click', enviarMusicas);
+document.getElementById('modo-publico-toggle').addEventListener('change', async (e) => {
+  const ativo = e.target.checked;
+  e.target.disabled = true;
+  const r = await api('/api/modo-publico', { ativo });
+  e.target.disabled = false;
+  if (r?.ok) {
+    toast(ativo ? 'Modo público ativado' : 'Modo público desativado', 'ok');
+  } else {
+    e.target.checked = !ativo; // reverte se a chamada falhou
+    toast('Erro ao mudar modo público', 'err');
+  }
+  carregarStats();
+});
 document.getElementById('btn-copy-url').addEventListener('click', () => {
   try {
     const ta = document.createElement('textarea');

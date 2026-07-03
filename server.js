@@ -108,6 +108,7 @@ app.get('/api/stats', (req, res) => {
     youtubeOk:        !!process.env.YOUTUBE_REFRESH_TOKEN,
     emProducao,
     emUpload,
+    modoPublico:         process.env.MODO_PUBLICO === 'true',
     agendamentoAtivo:    AGENDAMENTO_ATIVO,
     horariosAgendados:   HORARIOS_AGENDADOS,
     limpezaAtiva:        LIMPEZA_ATIVA,
@@ -143,10 +144,35 @@ app.get('/api/historico', (req, res) => {
   } catch { res.json([]); }
 });
 
+// ── Upload + backup (compartilhado entre a rota manual e o modo público) ──────
+
+async function uploadEBackup(dirOutput, nomeBase, privacidade) {
+  logBus(`Iniciando upload: ${nomeBase}`);
+  const r = await uploadYouTube(dirOutput, { privacidade });
+  logBus(`✓ Upload concluído!`);
+  logBus(`URL: ${r.url}`);
+
+  try {
+    logBus('Enviando cópia de backup pro Google Drive...');
+    const backup = await backupParaDrive(dirOutput, r.videoPath, `${nomeBase}.mp4`);
+    logBus(`✓ Backup no Drive: ${backup.url}`);
+
+    // YouTube + Drive confirmados — não precisa mais da cópia local
+    fs.rmSync(dirOutput, { recursive: true, force: true });
+    logBus(`🧹 Pasta local apagada (já está no YouTube e no Drive): ${nomeBase}`);
+  } catch (e) {
+    logBus(`⚠ Backup no Drive falhou (vídeo já está no YouTube, arquivo local mantido): ${e.message}`);
+  }
+
+  return r;
+}
+
 // ── Produzir ──────────────────────────────────────────────────────────────────
 
 // Lógica central de produção — usada tanto pela rota manual quanto pelo agendador.
-// NÃO faz upload: o upload pro YouTube continua sendo um passo manual separado.
+// Por padrão NÃO faz upload (vídeo fica em output/ aguardando revisão manual).
+// Com MODO_PUBLICO=true (ver /api/modo-publico), publica automaticamente no
+// YouTube como público assim que o vídeo fica pronto — sem revisão humana.
 const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
   logBus(`Tema: "${tema}"`);
   const nomeBase  = `${new Date().toISOString().split('T')[0]}_${tema.replace(/[^a-z0-9]/gi, '_').slice(0, 30).toLowerCase()}`;
@@ -188,6 +214,24 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
     try {
       const videoPath = await montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisual);
       logBus(`✓ Vídeo pronto: ${path.basename(videoPath)}`);
+
+      if (process.env.MODO_PUBLICO === 'true') {
+        if (!process.env.YOUTUBE_REFRESH_TOKEN) {
+          logBus('⚠ Modo público ativado, mas YouTube não está autenticado — vídeo fica em output/ aguardando upload manual');
+        } else if (emUpload) {
+          logBus('⚠ Modo público: já há um upload em andamento — vídeo fica em output/ aguardando upload manual');
+        } else {
+          emUpload = true;
+          try {
+            await uploadEBackup(dirOutput, nomeBase, 'public');
+            logBus('🌐 Modo público: vídeo publicado automaticamente, sem revisão manual');
+          } catch (e) {
+            logBus(`⚠ Modo público: upload automático falhou (${e.message}) — vídeo fica em output/ aguardando upload manual`);
+          } finally {
+            emUpload = false;
+          }
+        }
+      }
     } catch (e) {
       logBus(`⚠ Montagem de vídeo falhou: ${e.message}`);
     }
@@ -288,25 +332,22 @@ app.post('/api/youtube/upload', async (req, res) => {
   emUpload = true;
 
   capturarLogs(async () => {
-    logBus(`Iniciando upload: ${nomeBase}`);
-    const r = await uploadYouTube(dirOutput, { privacidade });
-    logBus(`✓ Upload concluído!`);
-    logBus(`URL: ${r.url}`);
-
-    try {
-      logBus('Enviando cópia de backup pro Google Drive...');
-      const backup = await backupParaDrive(dirOutput, r.videoPath, `${nomeBase}.mp4`);
-      logBus(`✓ Backup no Drive: ${backup.url}`);
-
-      // YouTube + Drive confirmados — não precisa mais da cópia local
-      fs.rmSync(dirOutput, { recursive: true, force: true });
-      logBus(`🧹 Pasta local apagada (já está no YouTube e no Drive): ${nomeBase}`);
-    } catch (e) {
-      logBus(`⚠ Backup no Drive falhou (vídeo já está no YouTube, arquivo local mantido): ${e.message}`);
-    }
-
+    const r = await uploadEBackup(dirOutput, nomeBase, privacidade);
     bus.emit('done', { upload: true, url: r.url });
   })().catch(e => { console.error('[Upload] Erro:', e.message); bus.emit('error', e.message); }).finally(() => { emUpload = false; });
+});
+
+// ── Modo público (liga/desliga publicação automática pós-produção) ───────────
+// Quando ativo, produzirVideo() já chama uploadEBackup() com privacidade
+// pública assim que o vídeo fica pronto, sem esperar revisão manual.
+
+app.post('/api/modo-publico', (req, res) => {
+  const ativo = !!req.body?.ativo;
+  salvarEnv('MODO_PUBLICO', ativo ? 'true' : 'false');
+  logBus(ativo
+    ? '🌐 Modo público ATIVADO — próximos vídeos serão publicados automaticamente, sem revisão'
+    : '🔒 Modo público desativado — vídeos voltam a aguardar revisão manual antes de publicar');
+  res.json({ ok: true, ativo });
 });
 
 // ── Download de arquivo ───────────────────────────────────────────────────────
