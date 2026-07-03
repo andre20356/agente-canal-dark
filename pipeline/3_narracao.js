@@ -3,7 +3,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const config = require('../config/config');
 
-const VOICE_EDGE = 'pt-BR-AntonioNeural';
+const VOICE_EDGE = 'pt-BR-ThalitaMultilingualNeural';
 
 // ── Limpeza do texto para TTS ─────────────────────────────────────────────────
 
