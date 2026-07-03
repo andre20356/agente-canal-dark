@@ -90,7 +90,7 @@ function vttParaSrt(vttContent) {
 
 // ── Edge TTS (gratuito, sem API key) ─────────────────────────────────────────
 
-async function gerarAudioEdgeTTS(texto, dirOutput, nomeBase) {
+async function gerarAudioEdgeTTS(texto, dirOutput, nomeBase, tentativas = 2) {
   const txtPath = path.join(dirOutput, `${nomeBase}_narracao_input.txt`);
   const mp3Path = path.join(dirOutput, `${nomeBase}_narracao.mp3`);
   const vttPath = path.join(dirOutput, `${nomeBase}_narracao.vtt`);
@@ -98,28 +98,33 @@ async function gerarAudioEdgeTTS(texto, dirOutput, nomeBase) {
 
   fs.writeFileSync(txtPath, texto, 'utf-8');
 
-  try {
-    // Rate mais lento (-12%) tira o ar apressado/mecânico do TTS padrão e
-    // aproxima de um tom de narrador contando uma história, não lendo um
-    // texto correndo. Pitch levemente mais grave (-3Hz) dá mais gravidade.
-    execSync(
-      `edge-tts --file "${txtPath}" --voice ${VOICE_EDGE} ` +
-      `--rate=-12% --pitch=-3Hz ` +
-      `--write-media "${mp3Path}" --write-subtitles "${vttPath}"`,
-      { timeout: 120000 }
-    );
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      // Rate mais lento (-12%) tira o ar apressado/mecânico do TTS padrão e
+      // aproxima de um tom de narrador contando uma história, não lendo um
+      // texto correndo. Pitch levemente mais grave (-3Hz) dá mais gravidade.
+      execSync(
+        `edge-tts --file "${txtPath}" --voice ${VOICE_EDGE} ` +
+        `--rate=-12% --pitch=-3Hz ` +
+        `--write-media "${mp3Path}" --write-subtitles "${vttPath}"`,
+        { timeout: 120000 }
+      );
 
-    // Gera SRT a partir do VTT
-    if (fs.existsSync(vttPath)) {
-      const vttContent = fs.readFileSync(vttPath, 'utf-8');
-      fs.writeFileSync(srtPath, vttParaSrt(vttContent), 'utf-8');
+      // Gera SRT a partir do VTT
+      if (fs.existsSync(vttPath)) {
+        const vttContent = fs.readFileSync(vttPath, 'utf-8');
+        fs.writeFileSync(srtPath, vttParaSrt(vttContent), 'utf-8');
+      }
+
+      return { mp3: mp3Path, srt: fs.existsSync(srtPath) ? srtPath : null };
+    } catch (e) {
+      const ultima = i === tentativas - 1;
+      console.warn(`[Narração] Edge TTS falhou (tentativa ${i + 1}/${tentativas}): ${e.message}`);
+      if (ultima) return null;
+      await new Promise(r => setTimeout(r, 3000)); // pausa curta — costuma ser falha transitória de rede
     }
-
-    return { mp3: mp3Path, srt: fs.existsSync(srtPath) ? srtPath : null };
-  } catch (e) {
-    console.warn(`[Narração] Edge TTS falhou: ${e.message}`);
-    return null;
   }
+  return null;
 }
 
 // ── ElevenLabs (opcional, se tiver chave) ─────────────────────────────────────
@@ -145,11 +150,18 @@ async function gerarAudioElevenLabs(texto, dirOutput, nomeBase) {
         }),
       }
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const corpo = await res.text().catch(() => '');
+      console.warn(`[Narração] ElevenLabs falhou (HTTP ${res.status}): ${corpo.slice(0, 300)}`);
+      return null;
+    }
     const mp3Path = path.join(dirOutput, `${nomeBase}_narracao.mp3`);
     fs.writeFileSync(mp3Path, await res.buffer());
     return { mp3: mp3Path, srt: null };
-  } catch { return null; }
+  } catch (e) {
+    console.warn(`[Narração] ElevenLabs falhou: ${e.message}`);
+    return null;
+  }
 }
 
 // ── Principal ─────────────────────────────────────────────────────────────────

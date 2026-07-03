@@ -143,27 +143,11 @@
       "nota_qualidade": null,
       "status": "produzido",
       "metricas_reais": null
-    },
-    {
-      "tema": "A tripulação que sumiu sem deixar rastros — o navio fantasma real",
-      "titulo": "A verdade sobre A tripulação que sumiu sem deixar rastros — ",
-      "data": "2026-07-03T00:07:21.611Z",
-      "nota_qualidade": null,
-      "status": "produzido",
-      "metricas_reais": null
-    },
-    {
-      "tema": "O projeto que tentava controlar mentes humanas — e quase funcionou",
-      "titulo": "A verdade sobre O projeto que tentava controlar mentes human",
-      "data": "2026-07-03T00:30:38.034Z",
-      "nota_qualidade": null,
-      "status": "produzido",
-      "metricas_reais": null
     }
   ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 20,
+    "total_videos": 21,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,
