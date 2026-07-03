@@ -11,6 +11,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const fetch = require('node-fetch');
 const { buscarClipeStock, baixarClipe } = require('./stock_footage');
+const { execAsync, verificarCancelamento } = require('./execControlado');
 
 const RESOLUCAO = '1920x1080';
 const FPS       = 25;
@@ -95,10 +96,9 @@ async function gerarImagemOuFallback(prompt, imgPath, label, total, i) {
     console.log(' ✓');
   } else {
     console.log(' ⚠ fallback escuro');
-    execSync(
+    await execAsync(
       `ffmpeg -hide_banner -loglevel error -y -f lavfi -i "color=c=#050510:s=${IMG_W}x${IMG_H}" ` +
-      `-frames:v 1 "${imgPath}"`,
-      { stdio: 'pipe' }
+      `-frames:v 1 "${imgPath}"`
     );
   }
 }
@@ -117,6 +117,7 @@ async function gerarImagensCenas(dirOutput, nomeBase, storyboard, temaGeral, dur
 
   const imagens = [];
   for (let i = 0; i < totalImagens; i++) {
+    verificarCancelamento();
     const imgPath = path.join(dirImg, `cena_${String(i + 1).padStart(3, '0')}.jpg`);
 
     // Reutiliza imagem já gerada (útil em re-execuções)
@@ -174,6 +175,7 @@ async function gerarImagensDoPlanoVisual(dirOutput, plano) {
 
   const imagens = [];
   for (let i = 0; i < plano.length; i++) {
+    verificarCancelamento();
     const cena    = plano[i];
     const duracao = Math.max(1, cena.end - cena.start);
     const { path: cenaPath, tipo } = await gerarCenaComStockOuIA(cena, i, dirImg, plano.length);
@@ -187,7 +189,7 @@ async function gerarImagensDoPlanoVisual(dirOutput, plano) {
 
 // `imagens`: array de { path, duracao } — duração pode variar por imagem
 // (sincronizada com o trecho narrado quando vem do Diretor Visual).
-function montarSlideshow(imagens, bgPath) {
+async function montarSlideshow(imagens, bgPath) {
   const total        = imagens.length;
   const duracaoTotal = imagens.reduce((acc, img) => acc + img.duracao, 0);
   const FADE         = 0.5; // segundos de crossfade
@@ -203,11 +205,11 @@ function montarSlideshow(imagens, bgPath) {
   // Crossfade via xfade filter em cadeia
   // Para N imagens: N-1 transições
   if (total === 1) {
-    execSync(
+    await execAsync(
       `ffmpeg -hide_banner -loglevel error -nostats -y -f concat -safe 0 -i "${listaPath}" ` +
       `-vf "scale=${IMG_W}:${IMG_H}:force_original_aspect_ratio=increase,crop=${IMG_W}:${IMG_H},fps=${FPS}" ` +
       `-c:v libx264 -preset fast -an -t ${duracaoTotal + 2} "${bgPath}"`,
-      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
+      { timeout: 1800000 }
     );
   } else {
     // Monta cada cena como input separado com duração + crossfade.
@@ -235,11 +237,11 @@ function montarSlideshow(imagens, bgPath) {
       ultimoLabel = outLabel;
     }
 
-    execSync(
+    await execAsync(
       `ffmpeg -hide_banner -loglevel error -nostats -y ${inputs} ` +
       `-filter_complex "${filtros.join(';')}" ` +
       `-map "[vout]" -c:v libx264 -preset fast -an -t ${duracaoTotal + 2} "${bgPath}"`,
-      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
+      { timeout: 1800000 }
     );
   }
 
@@ -316,7 +318,8 @@ async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisu
 
   // Monta slideshow
   console.log('  [Vídeo] Montando slideshow de imagens...');
-  montarSlideshow(imagens, bgPath);
+  await montarSlideshow(imagens, bgPath);
+  verificarCancelamento();
 
   // Arquivo de título
   const titulo = (seo?.titulo_recomendado || nomeBase).slice(0, 70);
@@ -334,7 +337,7 @@ async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisu
     : '  [Vídeo] Combinando vídeo + áudio + legendas (sem música de fundo — pasta assets/musica_fundo/ vazia)...');
 
   if (musicaPath) {
-    execSync(
+    await execAsync(
       `ffmpeg -hide_banner -loglevel error -nostats -y -i "${bgPath}" -i "${audioPath}" -stream_loop -1 -i "${musicaPath}" ` +
       `-filter_complex "[2:a]volume=${VOLUME_MUSICA_FUNDO}[mus];[1:a][mus]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]" ` +
       `-vf "${filtros.join(',')}" ` +
@@ -342,16 +345,16 @@ async function montarVideo(dirOutput, nomeBase, seo, storyboard, tema, planoVisu
       `-c:v libx264 -preset fast -crf 22 ` +
       `-c:a aac -b:a 128k -shortest ` +
       `"${videoOut}"`,
-      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
+      { timeout: 1800000 }
     );
   } else {
-    execSync(
+    await execAsync(
       `ffmpeg -hide_banner -loglevel error -nostats -y -i "${bgPath}" -i "${audioPath}" ` +
       `-vf "${filtros.join(',')}" ` +
       `-c:v libx264 -preset fast -crf 22 ` +
       `-c:a aac -b:a 128k -shortest ` +
       `"${videoOut}"`,
-      { stdio: 'pipe', timeout: 1800000, maxBuffer: 1024 * 1024 * 20 }
+      { timeout: 1800000 }
     );
   }
 

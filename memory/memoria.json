@@ -143,11 +143,19 @@
       "nota_qualidade": null,
       "status": "produzido",
       "metricas_reais": null
+    },
+    {
+      "tema": "A tripulação que sumiu sem deixar rastros — o navio fantasma real",
+      "titulo": "A verdade sobre A tripulação que sumiu sem deixar rastros — ",
+      "data": "2026-07-03T00:07:21.611Z",
+      "nota_qualidade": null,
+      "status": "produzido",
+      "metricas_reais": null
     }
   ],
   "videos_produzidos": [],
   "metricas_globais": {
-    "total_videos": 18,
+    "total_videos": 19,
     "ctr_medio": 0,
     "retencao_media": 0,
     "inscritosAtual": 0,

@@ -19,6 +19,7 @@ const { uploadYouTube }       = require('./pipeline/6_upload');
 const { backupParaDrive }     = require('./pipeline/drive_backup');
 const { montarVideo }         = require('./pipeline/7_video');
 const memoria                 = require('./memory/gerenciador');
+const { solicitarCancelamento, resetCancelamento, verificarCancelamento } = require('./pipeline/execControlado');
 
 const app      = express();
 const PORT     = 4005;
@@ -183,25 +184,30 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
   const roteiro = await gerarRoteiro(tema, 12);
   fs.writeFileSync(path.join(dirOutput, `${nomeBase}_roteiro.txt`), roteiro);
   logBus('✓ Roteiro gerado');
+  verificarCancelamento();
 
   logBus('Gerando SEO...');
   const seo = processarSEO(tema, categoria);
   fs.writeFileSync(path.join(dirOutput, `${nomeBase}_seo.json`), JSON.stringify(seo, null, 2));
   logBus('✓ SEO gerado');
+  verificarCancelamento();
 
   logBus('Preparando narração...');
   const narracao = await processarNarracao(roteiro, dirOutput, nomeBase);
   logBus(`✓ Narração pronta (~${narracao.duracao_estimada_min} min)`);
+  verificarCancelamento();
 
   logBus('Criando storyboard...');
   const storyboard = processarStoryboard(roteiro, tema, dirOutput, nomeBase);
   logBus(`✓ Storyboard criado (${storyboard.total_cenas} cenas)`);
+  verificarCancelamento();
 
   logBus('Gerando miniatura...');
   const thumbResultado = await processarThumbnail(tema, seo, storyboard, dirOutput, nomeBase);
   logBus(thumbResultado.imagem_gerada
     ? '✓ Miniatura gerada automaticamente'
     : '⚠ Miniatura automática falhou — use o prompt manual salvo na pasta');
+  verificarCancelamento();
 
   if (narracao.tts_gerado && narracao.arquivo_audio) {
     logBus('Diretor Visual: sincronizando cenas com a narração...');
@@ -233,6 +239,10 @@ const produzirVideo = capturarLogs(async (tema, categoria = 'misterio') => {
         }
       }
     } catch (e) {
+      if (e.cancelado) {
+        logBus('🛑 Produção cancelada pelo usuário — tema fica disponível pra tentar de novo');
+        return; // não registra tema como usado, não emite 'done'
+      }
       logBus(`⚠ Montagem de vídeo falhou: ${e.message}`);
     }
   } else {
@@ -250,8 +260,13 @@ function dispararProducao(tema, categoria, origem = 'manual') {
     return false;
   }
   emProducao = true;
+  resetCancelamento();
   produzirVideo(tema, categoria)
-    .catch(e => { console.error('[Produzir] Erro:', e.message); bus.emit('error', e.message); })
+    .catch(e => {
+      if (e.cancelado) { logBus('🛑 Produção cancelada pelo usuário'); return; }
+      console.error('[Produzir] Erro:', e.message);
+      bus.emit('error', e.message);
+    })
     .finally(() => { emProducao = false; });
   return true;
 }
@@ -263,6 +278,18 @@ app.post('/api/produzir', async (req, res) => {
   if (!tema?.trim()) return res.status(400).json({ error: 'Informe um tema' });
   res.json({ ok: true });
   dispararProducao(tema, categoria, 'manual');
+});
+
+// ── Cancelar produção em andamento ───────────────────────────────────────────
+// Mata na hora qualquer ffmpeg/edge-tts rodando (execAsync) e marca o
+// cancelamento pros checkpoints entre etapas (verificarCancelamento) também
+// abortarem assim que forem checados.
+
+app.post('/api/produzir/cancelar', (req, res) => {
+  if (!emProducao) return res.status(400).json({ error: 'Não há produção em andamento' });
+  solicitarCancelamento();
+  logBus('🛑 Cancelamento solicitado — encerrando a etapa atual...');
+  res.json({ ok: true });
 });
 
 // ── YouTube auth URL ──────────────────────────────────────────────────────────

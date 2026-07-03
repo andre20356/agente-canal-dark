@@ -218,6 +218,7 @@ select.input { appearance: none; cursor: pointer; }
       <input class="input" id="tema-input" placeholder="Digite um tema personalizado...">
       <div class="row">
         <button class="btn btn-red" id="btn-produzir">Produzir Vídeo</button>
+        <button class="btn btn-ghost" id="btn-cancelar" style="display:none;border-color:var(--red2);color:var(--red2)">Parar Produção</button>
         <span id="prod-status" style="font-size:12px;color:var(--muted)"></span>
       </div>
     </div>
@@ -396,6 +397,17 @@ function desbloquear() {
   btn.textContent = 'Produzir Vídeo';
   document.getElementById('prod-status').textContent = '';
   document.getElementById('console-status').textContent = '';
+  document.getElementById('btn-cancelar').style.display = 'none';
+}
+
+async function cancelarProducao() {
+  const btn = document.getElementById('btn-cancelar');
+  btn.disabled = true;
+  btn.textContent = 'Cancelando...';
+  const r = await api('/api/produzir/cancelar', {});
+  if (r?.error) toast(r.error, 'err');
+  btn.disabled = false;
+  btn.textContent = 'Parar Produção';
 }
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
@@ -417,6 +429,20 @@ async function carregarStats() {
 
   document.getElementById('dot-gemini').className = 'dot ' + (d.geminiOk ? 'ok' : 'err');
   document.getElementById('dot-yt').className     = 'dot ' + (d.youtubeOk ? 'ok' : 'err');
+
+  // Mostra "Parar Produção" mesmo quando quem disparou foi o agendador (cron),
+  // não o clique manual — carregarStats roda a cada 30s e pega esse caso.
+  const btnCancelar = document.getElementById('btn-cancelar');
+  const btnProduzir = document.getElementById('btn-produzir');
+  if (d.emProducao) {
+    btnCancelar.style.display = 'inline-block';
+    btnProduzir.disabled = true;
+    btnProduzir.textContent = 'Produzindo...';
+  } else {
+    btnCancelar.style.display = 'none';
+    btnProduzir.disabled = false;
+    btnProduzir.textContent = 'Produzir Vídeo';
+  }
 
   const mpToggle = document.getElementById('modo-publico-toggle');
   const mpStatus = document.getElementById('modo-publico-status');
@@ -535,6 +561,7 @@ async function produzir() {
   btn.textContent = 'Produzindo...';
   document.getElementById('prod-status').textContent = 'Em andamento...';
   document.getElementById('console-status').textContent = '● ao vivo';
+  document.getElementById('btn-cancelar').style.display = 'inline-block';
 
   const r = await api('/api/produzir', { tema, categoria: catSel });
   if (r?.error) { toast(r.error, 'err'); desbloquear(); }
@@ -704,6 +731,7 @@ document.querySelectorAll('.nav-item').forEach(el => {
 });
 
 document.getElementById('btn-produzir').addEventListener('click', produzir);
+document.getElementById('btn-cancelar').addEventListener('click', cancelarProducao);
 document.getElementById('btn-conectar').addEventListener('click', abrirAuthBox);
 document.getElementById('btn-reconectar').addEventListener('click', abrirAuthBox);
 document.getElementById('btn-auth-submit').addEventListener('click', confirmarAuth);
