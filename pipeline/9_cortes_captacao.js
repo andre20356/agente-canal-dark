@@ -22,6 +22,9 @@ async function baixarEpisodio(videoId, dirOutput) {
 
   console.log(`  ⬇️  Baixando episódio ${videoId} via yt-dlp...`);
   const args = [
+    // Resolve o desafio "n" (ofuscação de assinatura) do YouTube via deno —
+    // sem isso, só formatos de imagem ficam disponíveis, sem vídeo/áudio real.
+    '--remote-components', 'ejs:github',
     '-f', 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]',
     '--merge-output-format', 'mp4',
     '-o', videoPath,
