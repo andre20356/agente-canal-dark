@@ -66,6 +66,7 @@ async function gerarLegendaSRT(clipPath, dirSaida) {
       let srt = result.response.text().trim();
       srt = srt.replace(/^```(srt)?\n?/i, '').replace(/```$/, '').trim();
       if (!srt.includes('-->')) throw new Error('Resposta não parece um SRT válido');
+      srt = normalizarTimestampsSRT(srt);
       fs.writeFileSync(srtPath, srt + '\n');
       return srtPath;
     } catch (e) {
@@ -78,6 +79,20 @@ async function gerarLegendaSRT(clipPath, dirSaida) {
     }
   }
   throw new Error(`Todos os modelos Gemini falharam gerando legenda: ${ultimoErro?.message}`);
+}
+
+// ── Corrige timestamp malformado que o Gemini às vezes gera ───────────────────
+// Formato correto exigido no prompt é HH:MM:SS,mmm, mas o Gemini
+// inconsistentemente às vezes devolve MM:SS:mmm (sem hora, vírgula virou
+// dois-pontos) — ex: "00:29:820" quando deveria ser "00:00:29,820". O ffmpeg
+// rejeita o arquivo inteiro (todos os blocos) se um só timestamp estiver
+// errado, então normaliza antes de gravar em vez de confiar no formato vindo
+// pronto.
+function normalizarTimestampsSRT(srt) {
+  return srt.replace(
+    /(\d{2}):(\d{2}):(\d{3})(?=\s*-->|\s*$)/gm,
+    (match, mm, ss, ms) => `00:${mm}:${ss},${ms}`
+  );
 }
 
 // ── Filtro de legenda (mesmo estilo usado no 7_video.js) ──────────────────────
