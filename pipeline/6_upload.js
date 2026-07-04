@@ -22,17 +22,47 @@ function salvarNoEnv(chave, valor) {
   } catch { /* ignora erros de I/O */ }
 }
 
+// ─── Modo teste/real ──────────────────────────────────────────────────────────
+// YOUTUBE_MODO=teste faz TODO upload/autenticação do YouTube (painel principal
+// e Canal de Cortes) usar o canal de teste em vez do canal real — sem precisar
+// trocar credencial manualmente toda hora. Client ID/Secret do teste caem pro
+// principal se não configurados (mesmo app OAuth, só troca a conta logada).
+
+function modoYoutubeAtivo() {
+  return process.env.YOUTUBE_MODO === 'teste' ? 'teste' : 'real';
+}
+
+function credenciaisYoutube() {
+  const modo = modoYoutubeAtivo();
+  if (modo === 'teste') {
+    return {
+      modo,
+      clientId:     process.env.YOUTUBE_TEST_CLIENT_ID     || process.env.YOUTUBE_CLIENT_ID,
+      clientSecret: process.env.YOUTUBE_TEST_CLIENT_SECRET || process.env.YOUTUBE_CLIENT_SECRET,
+      refreshToken: process.env.YOUTUBE_TEST_REFRESH_TOKEN,
+      chaveRefresh: 'YOUTUBE_TEST_REFRESH_TOKEN',
+      chaveAccess:  'YOUTUBE_TEST_ACCESS_TOKEN',
+    };
+  }
+  return {
+    modo,
+    clientId:     process.env.YOUTUBE_CLIENT_ID,
+    clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
+    refreshToken: process.env.YOUTUBE_REFRESH_TOKEN,
+    chaveRefresh: 'YOUTUBE_REFRESH_TOKEN',
+    chaveAccess:  'YOUTUBE_ACCESS_TOKEN',
+  };
+}
+
 // ─── OAuth2 ───────────────────────────────────────────────────────────────────
 
 function criarOAuth2() {
-  const clientId     = process.env.YOUTUBE_CLIENT_ID;
-  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
-  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
+  const { modo, clientId, clientSecret, refreshToken, chaveRefresh, chaveAccess } = credenciaisYoutube();
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error(
-      'Credenciais YouTube não configuradas.\n' +
-      '  Execute: node scripts/autenticar_youtube.js'
+      `Credenciais YouTube (modo ${modo}) não configuradas.\n` +
+      `  Execute: node scripts/autenticar_youtube.js${modo === 'teste' ? ' --teste' : ''}`
     );
   }
 
@@ -44,14 +74,15 @@ function criarOAuth2() {
 
   oauth2.setCredentials({ refresh_token: refreshToken });
 
-  // Persiste automaticamente quando o access_token é renovado
+  // Persiste automaticamente quando o access_token é renovado — sempre na
+  // chave do modo ATIVO no momento da renovação (não fixo em "real").
   oauth2.on('tokens', (tokens) => {
     if (tokens.refresh_token) {
-      salvarNoEnv('YOUTUBE_REFRESH_TOKEN', tokens.refresh_token);
-      process.env.YOUTUBE_REFRESH_TOKEN = tokens.refresh_token;
+      salvarNoEnv(chaveRefresh, tokens.refresh_token);
+      process.env[chaveRefresh] = tokens.refresh_token;
     }
     if (tokens.access_token) {
-      salvarNoEnv('YOUTUBE_ACCESS_TOKEN', tokens.access_token);
+      salvarNoEnv(chaveAccess, tokens.access_token);
     }
   });
 
@@ -268,4 +299,4 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
   return { ...resultado, videoPath };
 }
 
-module.exports = { uploadYouTube, encontrarArquivo, carregarSEO, validarVideo, salvarNoEnv };
+module.exports = { uploadYouTube, encontrarArquivo, carregarSEO, validarVideo, salvarNoEnv, modoYoutubeAtivo, credenciaisYoutube };

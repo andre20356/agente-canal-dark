@@ -41,23 +41,32 @@ function perguntar(txt) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  const modoTeste = process.argv.includes('--teste');
+  const chaveClientId     = modoTeste ? 'YOUTUBE_TEST_CLIENT_ID'     : 'YOUTUBE_CLIENT_ID';
+  const chaveClientSecret = modoTeste ? 'YOUTUBE_TEST_CLIENT_SECRET' : 'YOUTUBE_CLIENT_SECRET';
+  const chaveRefresh      = modoTeste ? 'YOUTUBE_TEST_REFRESH_TOKEN' : 'YOUTUBE_REFRESH_TOKEN';
+  const chaveAccess       = modoTeste ? 'YOUTUBE_TEST_ACCESS_TOKEN'  : 'YOUTUBE_ACCESS_TOKEN';
+
   console.log('\n' + '═'.repeat(57));
-  console.log('  📺  AUTENTICAÇÃO YOUTUBE — ARQUIVO SOMBRIO');
+  console.log(modoTeste ? '  📺  AUTENTICAÇÃO YOUTUBE — CANAL DE TESTE' : '  📺  AUTENTICAÇÃO YOUTUBE — ARQUIVO SOMBRIO');
   console.log('═'.repeat(57));
 
-  const clientId     = process.env.YOUTUBE_CLIENT_ID;
-  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+  // Client ID/Secret do teste caem pro principal se não tiver um app OAuth
+  // dedicado configurado — o normal é reaproveitar o mesmo app, só logando
+  // com a conta do canal de teste no passo 2.
+  const clientId     = process.env[chaveClientId]     || process.env.YOUTUBE_CLIENT_ID;
+  const clientSecret = process.env[chaveClientSecret] || process.env.YOUTUBE_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    console.log('\n❌ YOUTUBE_CLIENT_ID ou YOUTUBE_CLIENT_SECRET não configurados no .env\n');
+    console.log(`\n❌ ${chaveClientId} (ou YOUTUBE_CLIENT_ID) / ${chaveClientSecret} (ou YOUTUBE_CLIENT_SECRET) não configurados no .env\n`);
     process.exit(1);
   }
 
-  if (process.env.YOUTUBE_REFRESH_TOKEN) {
-    console.log('\n✅ YouTube já está autenticado.\n');
+  if (process.env[chaveRefresh]) {
+    console.log(`\n✅ Canal ${modoTeste ? 'de teste' : 'principal'} já está autenticado.\n`);
     const resp = await perguntar('  Deseja reautenticar? (s/N): ');
     if (resp.toLowerCase() !== 's') { console.log(''); process.exit(0); }
-    salvarNoEnv('YOUTUBE_REFRESH_TOKEN', '');
+    salvarNoEnv(chaveRefresh, '');
   }
 
   const oauth2 = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
@@ -126,10 +135,10 @@ async function main() {
     );
   }
 
-  salvarNoEnv('YOUTUBE_REFRESH_TOKEN', tokens.refresh_token);
-  if (tokens.access_token) salvarNoEnv('YOUTUBE_ACCESS_TOKEN', tokens.access_token);
+  salvarNoEnv(chaveRefresh, tokens.refresh_token);
+  if (tokens.access_token) salvarNoEnv(chaveAccess, tokens.access_token);
 
-  console.log('  ✓ Refresh Token salvo no .env');
+  console.log(`  ✓ Refresh Token salvo no .env (${chaveRefresh})`);
 
   oauth2.setCredentials(tokens);
   const yt    = google.youtube({ version: 'v3', auth: oauth2 });
@@ -141,7 +150,12 @@ async function main() {
   console.log('═'.repeat(57));
   console.log(`\n  📺 Canal: ${nomeCanal}`);
   console.log('  🔑 Refresh Token salvo com sucesso');
-  console.log('\n  Upload automático pronto. Use a opção 3 no menu.\n');
+  if (modoTeste) {
+    console.log('\n  Pra usar esse canal, ligue o toggle "Canal de teste" no painel');
+    console.log('  (ou defina YOUTUBE_MODO=teste no .env).\n');
+  } else {
+    console.log('\n  Upload automático pronto. Use a opção 3 no menu.\n');
+  }
   console.log('═'.repeat(57) + '\n');
 }
 

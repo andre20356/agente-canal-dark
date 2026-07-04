@@ -15,7 +15,7 @@ const { processarNarracao }   = require('./pipeline/3_narracao');
 const { processarStoryboard } = require('./pipeline/4_storyboard');
 const { gerarPlanoVisual }    = require('./pipeline/4b_diretor_visual');
 const { processarThumbnail }  = require('./pipeline/5_thumbnail');
-const { uploadYouTube }       = require('./pipeline/6_upload');
+const { uploadYouTube, modoYoutubeAtivo, credenciaisYoutube } = require('./pipeline/6_upload');
 const { uploadTikTok }        = require('./pipeline/6c_upload_tiktok');
 const { backupParaDrive }     = require('./pipeline/drive_backup');
 const { montarVideo }         = require('./pipeline/7_video');
@@ -79,11 +79,8 @@ function capturarLogs(fn) {
 }
 
 function oauthClient() {
-  return new google.auth.OAuth2(
-    process.env.YOUTUBE_CLIENT_ID,
-    process.env.YOUTUBE_CLIENT_SECRET,
-    REDIRECT
-  );
+  const { clientId, clientSecret } = credenciaisYoutube();
+  return new google.auth.OAuth2(clientId, clientSecret, REDIRECT);
 }
 
 // ── Canal de Cortes (rotas próprias, ver cortes_router.js) ───────────────────
@@ -119,7 +116,8 @@ app.get('/api/stats', (req, res) => {
     totalVideos:      mem.metricas_globais?.total_videos || 0,
     temasDisponiveis: sugerirTemas(200).length,
     geminiOk:         !!process.env.GEMINI_API_KEY,
-    youtubeOk:        !!process.env.YOUTUBE_REFRESH_TOKEN,
+    youtubeOk:        !!credenciaisYoutube().refreshToken,
+    youtubeModo:      modoYoutubeAtivo(),
     tiktokOk:         !!process.env.TIKTOK_REFRESH_TOKEN,
     tiktokAuditado:   process.env.TIKTOK_AUDITADO === 'true',
     emProducao,
@@ -379,8 +377,9 @@ app.post('/api/youtube/auth', async (req, res) => {
     const { tokens } = await oauth2.getToken(code);
     if (!tokens.refresh_token) return res.status(400).json({ error: 'Refresh token não recebido. Revogue em myaccount.google.com/permissions e tente novamente.' });
 
-    salvarEnv('YOUTUBE_REFRESH_TOKEN', tokens.refresh_token);
-    if (tokens.access_token) salvarEnv('YOUTUBE_ACCESS_TOKEN', tokens.access_token);
+    const { chaveRefresh, chaveAccess } = credenciaisYoutube();
+    salvarEnv(chaveRefresh, tokens.refresh_token);
+    if (tokens.access_token) salvarEnv(chaveAccess, tokens.access_token);
 
     oauth2.setCredentials(tokens);
     const yt = google.youtube({ version: 'v3', auth: oauth2 });
@@ -412,6 +411,18 @@ app.post('/api/youtube/upload', async (req, res) => {
     const r = await uploadEBackup(dirOutput, nomeBase, privacidade);
     bus.emit('done', { upload: true, url: r.url });
   })().catch(e => { console.error('[Upload] Erro:', e.message); bus.emit('error', e.message); }).finally(() => { emUpload = false; });
+});
+
+// ── YouTube: alternar canal de teste / real ──────────────────────────────────
+// Client ID/Secret do teste caem pro principal se não configurados (ver
+// credenciaisYoutube() em 6_upload.js) — só é obrigatório configurar
+// YOUTUBE_TEST_REFRESH_TOKEN (via autenticar_youtube.js --teste) pra usar.
+
+app.post('/api/youtube/modo', (req, res) => {
+  const modo = req.body?.modo === 'teste' ? 'teste' : 'real';
+  salvarEnv('YOUTUBE_MODO', modo);
+  logBus(`🔀 YouTube: alternado pro canal ${modo === 'teste' ? 'de TESTE' : 'REAL'}`);
+  res.json({ ok: true, modo });
 });
 
 // ── TikTok auth URL ───────────────────────────────────────────────────────────

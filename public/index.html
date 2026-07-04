@@ -323,6 +323,22 @@ select.input { appearance: none; cursor: pointer; }
   <section id="tab-youtube" class="tab">
     <div class="page-title">YouTube</div>
 
+    <div class="section">
+      <h3>Canal de teste</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Ligado: todo upload (manual, Modo Público ou Canal de Cortes) vai pro canal de teste
+        em vez do canal principal do Arquivo Sombrio. Autentique antes via
+        <code>node scripts/autenticar_youtube.js --teste</code>.
+      </div>
+      <div class="switch-row">
+        <label class="switch">
+          <input type="checkbox" id="yt-modo-teste-toggle">
+          <span class="switch-track"></span>
+        </label>
+        <span id="yt-modo-teste-status" style="font-size:13px"></span>
+      </div>
+    </div>
+
     <!-- Status -->
     <div class="section">
       <h3>Status da Conta</h3>
@@ -569,12 +585,21 @@ async function carregarStats() {
     ultimoModoPublico = d.modoPublico;
   }
 
+  // Canal de teste toggle
+  const ytModoToggle = document.getElementById('yt-modo-teste-toggle');
+  const ytModoStatus = document.getElementById('yt-modo-teste-status');
+  if (document.activeElement !== ytModoToggle) ytModoToggle.checked = (d.youtubeModo === 'teste');
+  ytModoStatus.textContent = d.youtubeModo === 'teste'
+    ? '🧪 Ativado — uploads vão pro canal de teste'
+    : '📺 Desligado — uploads vão pro canal principal';
+  ytModoStatus.style.color = d.youtubeModo === 'teste' ? 'var(--gold)' : 'var(--muted)';
+
   // YouTube tab status
   const ytDot  = document.getElementById('yt-dot');
   const ytText = document.getElementById('yt-status-text');
   if (d.youtubeOk) {
     ytDot.className = 'dot ok';
-    ytText.textContent = 'Autenticado';
+    ytText.textContent = 'Autenticado' + (d.youtubeModo === 'teste' ? ' (canal de teste)' : '');
     document.getElementById('btn-conectar').style.display = 'none';
     document.getElementById('btn-reconectar').style.display = 'inline-block';
     document.getElementById('yt-upload-section').style.display = 'block';
@@ -1004,6 +1029,19 @@ document.getElementById('btn-auth-submit').addEventListener('click', confirmarAu
 document.getElementById('btn-upload').addEventListener('click', fazerUpload);
 document.getElementById('btn-musica-upload').addEventListener('click', enviarMusicas);
 document.getElementById('btn-tiktok-auth').addEventListener('click', autenticarTiktok);
+document.getElementById('yt-modo-teste-toggle').addEventListener('change', async (e) => {
+  const modo = e.target.checked ? 'teste' : 'real';
+  e.target.disabled = true;
+  const r = await api('/api/youtube/modo', { modo });
+  e.target.disabled = false;
+  if (r?.ok) {
+    toast(modo === 'teste' ? 'Canal de teste ativado' : 'Canal principal ativado', 'ok');
+    carregarStats();
+  } else {
+    e.target.checked = modo !== 'teste';
+    toast(r?.error || 'Erro ao mudar configuração', 'err');
+  }
+});
 document.getElementById('btn-cortes-add-fonte').addEventListener('click', adicionarFonteCortes);
 document.getElementById('btn-cortes-buscar').addEventListener('click', buscarEpisodiosCortes);
 document.getElementById('tiktok-toggle').addEventListener('change', async (e) => {
