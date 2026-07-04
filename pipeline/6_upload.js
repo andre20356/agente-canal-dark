@@ -299,4 +299,4 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
   return { ...resultado, videoPath };
 }
 
-module.exports = { uploadYouTube, encontrarArquivo, carregarSEO, validarVideo, salvarNoEnv, modoYoutubeAtivo, credenciaisYoutube };
+module.exports = { uploadYouTube, encontrarArquivo, carregarSEO, validarVideo, salvarNoEnv, modoYoutubeAtivo, credenciaisYoutube, criarOAuth2 };

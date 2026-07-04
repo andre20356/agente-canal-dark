@@ -6,6 +6,12 @@ const path = require('path');
 const fs   = require('fs');
 const { execFileSync } = require('child_process');
 
+// yt-dlp rodando de IP de VPS/servidor frequentemente esbarra no bloqueio
+// anti-bot do YouTube ("Sign in to confirm you're not a bot"). Único jeito
+// de contornar é passar cookies de uma sessão de navegador logada de
+// verdade — exportados com uma extensão tipo "Get cookies.txt LOCALLY".
+const COOKIES_PATH = path.join(__dirname, '..', 'cortes_cookies.txt');
+
 async function baixarEpisodio(videoId, dirOutput) {
   fs.mkdirSync(dirOutput, { recursive: true });
   const videoPath = path.join(dirOutput, 'episodio.mp4');
@@ -15,15 +21,26 @@ async function baixarEpisodio(videoId, dirOutput) {
   }
 
   console.log(`  ⬇️  Baixando episódio ${videoId} via yt-dlp...`);
+  const args = [
+    '-f', 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]',
+    '--merge-output-format', 'mp4',
+    '-o', videoPath,
+  ];
+  if (fs.existsSync(COOKIES_PATH)) args.push('--cookies', COOKIES_PATH);
+  args.push(`https://www.youtube.com/watch?v=${videoId}`);
+
   try {
-    execFileSync('yt-dlp', [
-      '-f', 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]',
-      '--merge-output-format', 'mp4',
-      '-o', videoPath,
-      `https://www.youtube.com/watch?v=${videoId}`,
-    ], { stdio: 'inherit', timeout: 30 * 60 * 1000 });
+    execFileSync('yt-dlp', args, { stdio: 'pipe', timeout: 30 * 60 * 1000 });
   } catch (e) {
-    throw new Error(`yt-dlp falhou pro vídeo ${videoId}: ${e.message}`);
+    const saida = (e.stderr || e.stdout || e.message || '').toString();
+    if (saida.includes('Sign in to confirm')) {
+      throw new Error(
+        `YouTube bloqueou o download por suspeita de robô (comum em IP de servidor). ` +
+        `Exporte cookies de uma sessão logada no YouTube (extensão "Get cookies.txt LOCALLY") ` +
+        `e salve o arquivo em cortes_cookies.txt na raiz do projeto — sem isso o download não funciona.`
+      );
+    }
+    throw new Error(`yt-dlp falhou pro vídeo ${videoId}: ${saida.split('\n').slice(-3).join(' ')}`);
   }
 
   if (!fs.existsSync(videoPath)) {

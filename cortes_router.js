@@ -110,8 +110,12 @@ function criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube,
       for (const fonte of ativas) {
         try {
           logBus(`[Cortes] Checando novos episódios de "${fonte.nome}"...`);
+          // Episódios com status "erro" NÃO contam como já processados — a
+          // falha costuma ser ambiental (ex: bloqueio anti-bot do YouTube),
+          // não um problema do vídeo em si, então deixa tentar de novo sozinho
+          // na próxima busca.
           const jaProcessados = Object.values(state.episodios)
-            .filter(e => e.fonteId === fonte.id)
+            .filter(e => e.fonteId === fonte.id && e.status !== 'erro')
             .map(e => e.videoId);
 
           const { novos } = await buscarNovosEpisodios(fonte, jaProcessados);
@@ -144,7 +148,7 @@ function criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube,
 
     const state = lerState();
     const episodioId = `${fonte.id}__${videoId}`;
-    if (state.episodios[episodioId]) {
+    if (state.episodios[episodioId] && state.episodios[episodioId].status !== 'erro') {
       return res.status(400).json({ error: 'Esse vídeo já foi processado — veja a lista de episódios' });
     }
 

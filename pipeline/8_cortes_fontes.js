@@ -5,6 +5,23 @@
 // autorizou formalmente o uso do conteúdo pra corte.
 const { google } = require('googleapis');
 const config = require('../config/config');
+const { criarOAuth2 } = require('./6_upload');
+
+// Reaproveita a MESMA autenticação OAuth já feita pro upload (scripts/autenticar_youtube.js)
+// pra essas chamadas de leitura pública — não precisa de uma YOUTUBE_API_KEY separada.
+// Só usa a chave simples se ela estiver configurada (ex: quem preferir não misturar
+// com a conta logada, ou checar canal antes mesmo de autenticar upload).
+function authYoutube() {
+  if (config.apis.youtubeDataApi) return config.apis.youtubeDataApi;
+  try {
+    return criarOAuth2();
+  } catch (e) {
+    throw new Error(
+      'Nem YOUTUBE_API_KEY nem autenticação OAuth do YouTube estão configuradas.\n' +
+      '  Rode: node scripts/autenticar_youtube.js (ou --teste, dependendo do canal ativo)'
+    );
+  }
+}
 
 function extrairChannelId(input) {
   const s = (input || '').trim();
@@ -26,10 +43,7 @@ async function resolverChannelId(youtube, input) {
 }
 
 async function buscarNovosEpisodios(fonte, jaProcessados = []) {
-  if (!config.apis.youtubeDataApi) {
-    throw new Error('YOUTUBE_API_KEY não configurada no .env — necessária pra checar o canal parceiro');
-  }
-  const youtube = google.youtube({ version: 'v3', auth: config.apis.youtubeDataApi });
+  const youtube = google.youtube({ version: 'v3', auth: authYoutube() });
 
   const channelId = await resolverChannelId(youtube, fonte.youtube_channel);
   const canalInfo = await youtube.channels.list({ part: ['contentDetails', 'snippet'], id: [channelId] });
@@ -70,10 +84,7 @@ function extrairVideoId(input) {
 }
 
 async function buscarInfoVideo(videoId) {
-  if (!config.apis.youtubeDataApi) {
-    throw new Error('YOUTUBE_API_KEY não configurada no .env — necessária pra buscar dados do vídeo');
-  }
-  const youtube = google.youtube({ version: 'v3', auth: config.apis.youtubeDataApi });
+  const youtube = google.youtube({ version: 'v3', auth: authYoutube() });
   const r = await youtube.videos.list({ part: ['snippet'], id: [videoId] });
   const item = r.data.items?.[0];
   if (!item) throw new Error(`Vídeo não encontrado: ${videoId} (conferir se é público e o ID está certo)`);

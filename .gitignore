@@ -4,3 +4,4 @@ logs/
 output/
 *.log
 *.bak.*
+cortes_cookies.txt
