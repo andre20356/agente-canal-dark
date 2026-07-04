@@ -21,6 +21,7 @@ const { backupParaDrive }     = require('./pipeline/drive_backup');
 const { montarVideo }         = require('./pipeline/7_video');
 const memoria                 = require('./memory/gerenciador');
 const { solicitarCancelamento, resetCancelamento, verificarCancelamento } = require('./pipeline/execControlado');
+const { criarCortesRouter }    = require('./cortes_router');
 
 const app      = express();
 const PORT     = 4005;
@@ -84,6 +85,10 @@ function oauthClient() {
     REDIRECT
   );
 }
+
+// ── Canal de Cortes (rotas próprias, ver cortes_router.js) ───────────────────
+
+app.use('/api/cortes', criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube, uploadTikTok }));
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
 

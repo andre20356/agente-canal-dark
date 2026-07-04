@@ -171,7 +171,9 @@ async function aguardarPublicacao(accessToken, publishId, { timeoutMs = 5 * 60 *
 
 async function uploadTikTok(dirOutput, opcoes = {}) {
   let accessToken = await tokenValido();
-  const seo = carregarSEO(dirOutput);
+  // _seo.json só existe no pipeline do Arquivo Sombrio — quem já passa
+  // titulo pronto (ex: Canal de Cortes) não precisa desse arquivo.
+  const seo = opcoes.titulo ? null : carregarSEO(dirOutput);
 
   const videoPath = opcoes.videoPath || encontrarArquivo(dirOutput, ['.mp4', '.mkv', '.mov', '.avi'], '_video', { exigirSufixo: true });
   if (!videoPath) {

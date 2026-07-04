@@ -182,6 +182,9 @@ select.input { appearance: none; cursor: pointer; }
     <div class="nav-item" data-tab="youtube">
       <span class="nav-icon">▶</span> YouTube
     </div>
+    <div class="nav-item" data-tab="cortes">
+      <span class="nav-icon">✂</span> Canal de Cortes
+    </div>
   </nav>
   <div class="sidebar-footer">
     <div class="api-pill"><span class="dot" id="dot-gemini"></span>Gemini API</div>
@@ -385,6 +388,39 @@ select.input { appearance: none; cursor: pointer; }
         <option value="public">Público</option>
       </select>
       <button class="btn btn-red" id="btn-upload">Fazer Upload</button>
+    </div>
+  </section>
+
+  <!-- Canal de Cortes ────────────────────────────────────────────────────── -->
+  <section id="tab-cortes" class="tab">
+    <div class="page-title">Canal de Cortes</div>
+
+    <div class="section">
+      <h3>Fontes parceiras</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Só adicione canais com parceria formal confirmada (autorização + split de receita) —
+        baixar episódio de canal sem autorização viola os Termos de Serviço do YouTube.
+      </div>
+      <div id="cortes-fontes-lista" style="margin-bottom:14px">Carregando...</div>
+      <div class="row" style="gap:8px;margin-bottom:8px">
+        <input class="input" id="cortes-fonte-nome" placeholder="Nome (ex: Podcast do Fulano)">
+        <input class="input" id="cortes-fonte-canal" placeholder="@handle ou URL do canal">
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btn-cortes-add-fonte">Adicionar Fonte</button>
+    </div>
+
+    <div class="section">
+      <h3>Buscar episódios novos</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Checa as fontes ativas, baixa episódios novos e já roda a detecção de cortes com IA.
+        Pode demorar — acompanhe pelo console (aba Produzir) ou pela lista abaixo.
+      </div>
+      <button class="btn btn-red" id="btn-cortes-buscar">Buscar Episódios Novos</button>
+    </div>
+
+    <div class="section">
+      <h3>Episódios</h3>
+      <div id="cortes-episodios-lista" style="font-size:13px;color:var(--muted)">Carregando...</div>
     </div>
   </section>
 
@@ -733,6 +769,7 @@ function irParaTab(tab) {
   document.getElementById('tab-' + tab)?.classList.add('active');
   document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
   if (tab === 'historico') carregarHistorico();
+  if (tab === 'cortes') { carregarCortesFontes(); carregarCortesEpisodios(); }
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -810,6 +847,129 @@ async function removerMusica(nome) {
   else toast('Erro ao remover', 'err');
 }
 
+// ─── Canal de Cortes ──────────────────────────────────────────────────────────
+
+const STATUS_EPISODIO_LABEL = {
+  baixando: '⬇️ Baixando episódio...',
+  detectando: '🤖 Detectando cortes com IA...',
+  pronto: '✓ Pronto pra revisão',
+  erro: '⚠ Erro',
+};
+
+async function carregarCortesFontes() {
+  const fontes = (await api('/api/cortes/config') || { fontes: [] }).fontes || [];
+  const div = document.getElementById('cortes-fontes-lista');
+  if (!fontes.length) { div.innerHTML = '<span style="color:var(--muted);font-size:13px">Nenhuma fonte cadastrada ainda.</span>'; return; }
+  div.innerHTML = fontes.map(f => `
+    <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px">${f.nome} <span style="color:var(--muted)">— ${f.youtube_channel}</span></span>
+      <button class="btn btn-ghost btn-sm" onclick="removerFonteCortes('${f.id}')">Remover</button>
+    </div>
+  `).join('');
+}
+
+async function adicionarFonteCortes() {
+  const nome = document.getElementById('cortes-fonte-nome').value.trim();
+  const canal = document.getElementById('cortes-fonte-canal').value.trim();
+  if (!nome || !canal) { toast('Preencha nome e canal', 'err'); return; }
+  const r = await api('/api/cortes/config', { nome, youtube_channel: canal });
+  if (r?.error) { toast(r.error, 'err'); return; }
+  document.getElementById('cortes-fonte-nome').value = '';
+  document.getElementById('cortes-fonte-canal').value = '';
+  toast('Fonte adicionada', 'ok');
+  carregarCortesFontes();
+}
+
+async function removerFonteCortes(id) {
+  await fetch(`/api/cortes/config/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  carregarCortesFontes();
+}
+
+async function buscarEpisodiosCortes() {
+  const btn = document.getElementById('btn-cortes-buscar');
+  btn.disabled = true;
+  btn.textContent = 'Buscando...';
+  const r = await api('/api/cortes/buscar', {});
+  if (r?.error) toast(r.error, 'err');
+  else toast('Busca iniciada — acompanhe a lista de episódios', 'ok');
+  btn.disabled = false;
+  btn.textContent = 'Buscar Episódios Novos';
+  setTimeout(carregarCortesEpisodios, 2000);
+}
+
+async function carregarCortesEpisodios() {
+  const episodios = await api('/api/cortes/episodios') || [];
+  const div = document.getElementById('cortes-episodios-lista');
+  if (!episodios.length) { div.textContent = 'Nenhum episódio processado ainda.'; return; }
+
+  div.innerHTML = episodios.slice().reverse().map(ep => `
+    <div class="section" style="background:var(--surface2);margin-bottom:10px">
+      <div style="font-size:14px;font-weight:600">${ep.titulo}</div>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 10px">${STATUS_EPISODIO_LABEL[ep.status] || ep.status}${ep.erro ? ' — ' + ep.erro : ''}</div>
+      ${ep.status === 'pronto' ? `<div id="candidatos-${ep.id}"><button class="btn btn-ghost btn-sm" onclick="carregarCandidatos('${ep.id}')">Ver candidatos de corte</button></div>` : ''}
+    </div>
+  `).join('');
+}
+
+const STATUS_CANDIDATO_LABEL = {
+  pendente: '⏳ Aguardando revisão',
+  processando: '⚙️ Cortando e legendando...',
+  processado: '✓ Pronto pra publicar',
+  publicado: '📤 Publicado',
+  rejeitado: '✗ Rejeitado',
+  erro: '⚠ Erro',
+};
+
+async function carregarCandidatos(episodioId) {
+  const candidatos = await api(`/api/cortes/episodios/${episodioId}/candidatos`) || [];
+  const div = document.getElementById(`candidatos-${episodioId}`);
+  if (!candidatos.length) { div.innerHTML = '<span style="color:var(--muted);font-size:12px">Nenhum candidato encontrado.</span>'; return; }
+
+  div.innerHTML = candidatos.map(c => {
+    const status = c.status || 'pendente';
+    const mmss = (s) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+    let acoes = '';
+    if (status === 'pendente') {
+      acoes = `
+        <button class="btn btn-red btn-sm" onclick="aprovarCandidato('${episodioId}', ${c.idx})">Aprovar</button>
+        <button class="btn btn-ghost btn-sm" onclick="rejeitarCandidato('${episodioId}', ${c.idx})">Rejeitar</button>`;
+    } else if (status === 'processado') {
+      acoes = `
+        <button class="btn btn-red btn-sm" onclick="publicarCandidato('${episodioId}', ${c.idx}, 'vertical')">Publicar Vertical</button>
+        <button class="btn btn-ghost btn-sm" onclick="publicarCandidato('${episodioId}', ${c.idx}, 'horizontal')">Publicar Horizontal</button>`;
+    }
+    return `
+      <div style="border-top:1px solid var(--border);padding:10px 0;margin-top:8px">
+        <div style="font-size:13px;font-weight:600">${c.titulo_sugerido} <span style="color:var(--muted);font-weight:400">(score ${c.score})</span></div>
+        <div style="font-size:12px;color:var(--muted);margin:3px 0">${mmss(c.inicio_seg)} – ${mmss(c.fim_seg)} · ${c.motivo}</div>
+        <div style="font-size:12px;color:var(--green);margin-bottom:6px">${STATUS_CANDIDATO_LABEL[status] || status}</div>
+        <div class="row" style="gap:6px">${acoes}</div>
+      </div>`;
+  }).join('');
+}
+
+async function aprovarCandidato(episodioId, idx) {
+  const r = await api(`/api/cortes/candidatos/${episodioId}/${idx}/aprovar`, {});
+  if (r?.error) { toast(r.error, 'err'); return; }
+  toast('Corte em processamento — acompanhe o console', 'ok');
+  carregarCandidatos(episodioId);
+}
+
+async function rejeitarCandidato(episodioId, idx) {
+  await api(`/api/cortes/candidatos/${episodioId}/${idx}/rejeitar`, {});
+  carregarCandidatos(episodioId);
+}
+
+async function publicarCandidato(episodioId, idx, formato) {
+  const plataformas = [];
+  if (confirm('Publicar no YouTube?')) plataformas.push('youtube');
+  if (confirm('Publicar também no TikTok?')) plataformas.push('tiktok');
+  if (!plataformas.length) return;
+  const r = await api(`/api/cortes/candidatos/${episodioId}/${idx}/publicar`, { formato, plataformas });
+  if (r?.error) { toast(r.error, 'err'); return; }
+  toast('Publicação iniciada — acompanhe o console', 'ok');
+}
+
 // ─── TikTok Auth (fluxo simples via prompt — sem modal dedicado) ─────────────
 
 async function autenticarTiktok() {
@@ -844,6 +1004,8 @@ document.getElementById('btn-auth-submit').addEventListener('click', confirmarAu
 document.getElementById('btn-upload').addEventListener('click', fazerUpload);
 document.getElementById('btn-musica-upload').addEventListener('click', enviarMusicas);
 document.getElementById('btn-tiktok-auth').addEventListener('click', autenticarTiktok);
+document.getElementById('btn-cortes-add-fonte').addEventListener('click', adicionarFonteCortes);
+document.getElementById('btn-cortes-buscar').addEventListener('click', buscarEpisodiosCortes);
 document.getElementById('tiktok-toggle').addEventListener('change', async (e) => {
   const ativo = e.target.checked;
   e.target.disabled = true;

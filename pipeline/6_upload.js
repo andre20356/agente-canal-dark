@@ -158,7 +158,11 @@ function validarVideo(videoPath) {
 async function uploadYouTube(dirOutput, opcoes = {}) {
   const auth = criarOAuth2();
   const yt   = google.youtube({ version: 'v3', auth });
-  const seo  = carregarSEO(dirOutput);
+
+  // _seo.json só existe no pipeline do Arquivo Sombrio — chamadores que já
+  // passam titulo/descricao prontos (ex: Canal de Cortes) não precisam dele
+  // e não têm esse arquivo na pasta.
+  const seo = (opcoes.titulo && opcoes.descricao) ? null : carregarSEO(dirOutput);
 
   // NÃO cai para "qualquer .mp4 da pasta": um _bg.mp4 (slideshow sem áudio/legenda)
   // sobra ali quando a montagem final falha, e um fallback genérico já subiu esse
@@ -176,7 +180,7 @@ async function uploadYouTube(dirOutput, opcoes = {}) {
   const thumbPath   = opcoes.thumbPath   || encontrarArquivo(dirOutput, ['.jpg', '.jpeg', '.png', '.webp'], '_thumbnail');
   const titulo      = opcoes.titulo      || seo.titulo_recomendado;
   const descricao   = opcoes.descricao   || formatarDescricao(seo);
-  const tags        = opcoes.tags        || seo.tags || [];
+  const tags        = opcoes.tags        || seo?.tags || [];
   const privacidade = opcoes.privacidade || 'public';
   const onProgress  = opcoes.onProgress  || (() => {});
 
