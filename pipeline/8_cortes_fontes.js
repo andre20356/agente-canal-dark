@@ -58,4 +58,31 @@ async function buscarNovosEpisodios(fonte, jaProcessados = []) {
   return { nomeCanal, channelId, novos };
 }
 
-module.exports = { buscarNovosEpisodios, resolverChannelId };
+// Extrai o ID de um vídeo a partir de URL (watch?v=, youtu.be/, shorts/) ou
+// aceita o ID puro direto — usado pra corte manual de vídeo antigo, fora do
+// fluxo automático de "episódios novos".
+function extrairVideoId(input) {
+  const s = (input || '').trim();
+  const m = s.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/);
+  if (m) return m[1];
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  return null;
+}
+
+async function buscarInfoVideo(videoId) {
+  if (!config.apis.youtubeDataApi) {
+    throw new Error('YOUTUBE_API_KEY não configurada no .env — necessária pra buscar dados do vídeo');
+  }
+  const youtube = google.youtube({ version: 'v3', auth: config.apis.youtubeDataApi });
+  const r = await youtube.videos.list({ part: ['snippet'], id: [videoId] });
+  const item = r.data.items?.[0];
+  if (!item) throw new Error(`Vídeo não encontrado: ${videoId} (conferir se é público e o ID está certo)`);
+  return {
+    videoId,
+    titulo:      item.snippet.title,
+    publicadoEm: item.snippet.publishedAt,
+    thumbnail:   item.snippet.thumbnails?.medium?.url || null,
+  };
+}
+
+module.exports = { buscarNovosEpisodios, resolverChannelId, extrairVideoId, buscarInfoVideo };

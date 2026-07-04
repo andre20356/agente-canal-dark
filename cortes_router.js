@@ -6,7 +6,7 @@ const express = require('express');
 const fs      = require('fs');
 const path    = require('path');
 
-const { buscarNovosEpisodios }        = require('./pipeline/8_cortes_fontes');
+const { buscarNovosEpisodios, extrairVideoId, buscarInfoVideo } = require('./pipeline/8_cortes_fontes');
 const { baixarEpisodio, extrairAudio } = require('./pipeline/9_cortes_captacao');
 const { detectarCortes }              = require('./pipeline/10_cortes_deteccao');
 const { processarCorte }              = require('./pipeline/11_cortes_edicao');
@@ -55,6 +55,43 @@ function criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube,
     res.json({ ok: true });
   });
 
+  // ── Processa um único episódio: baixa + extrai áudio + detecta cortes ───────
+  // Reaproveitado tanto pela busca automática quanto pelo corte manual de
+  // vídeo antigo (fora da lista de "episódios novos").
+
+  async function processarEpisodio(fonte, ep, state) {
+    const episodioId = `${fonte.id}__${ep.videoId}`;
+    const dirOutput   = path.join(CORTES_DIR, fonte.id, ep.videoId);
+    state.episodios[episodioId] = {
+      fonteId: fonte.id, videoId: ep.videoId, titulo: ep.titulo,
+      thumbnail: ep.thumbnail, dir: dirOutput, status: 'baixando', erro: null,
+    };
+    salvarState(state);
+    emitProgresso('cortes', 5);
+
+    try {
+      logBus(`[Cortes] Baixando: ${ep.titulo}`);
+      const videoPath = await baixarEpisodio(ep.videoId, dirOutput);
+      emitProgresso('cortes', 40);
+
+      state.episodios[episodioId].status = 'detectando';
+      salvarState(state);
+      logBus(`[Cortes] Extraindo áudio e detectando momentos de corte: ${ep.titulo}`);
+      const audioPath = extrairAudio(videoPath, dirOutput);
+      await detectarCortes(audioPath, dirOutput);
+      emitProgresso('cortes', 100);
+
+      state.episodios[episodioId].status = 'pronto';
+      salvarState(state);
+      logBus(`✓ [Cortes] "${ep.titulo}" pronto pra revisão`);
+    } catch (e) {
+      state.episodios[episodioId].status = 'erro';
+      state.episodios[episodioId].erro   = e.message;
+      salvarState(state);
+      logBus(`⚠ [Cortes] Falha em "${ep.titulo}": ${e.message}`);
+    }
+  }
+
   // ── Buscar episódios novos + captação + detecção ────────────────────────────
   // Roda em background (como a produção do Arquivo Sombrio) — a resposta HTTP
   // volta na hora, o progresso real vai pelo mesmo SSE (/api/stream).
@@ -82,36 +119,7 @@ function criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube,
           logBus(`[Cortes] "${fonte.nome}": ${novos.length} episódio(s) novo(s)`);
 
           for (const ep of novos) {
-            const episodioId = `${fonte.id}__${ep.videoId}`;
-            const dirOutput   = path.join(CORTES_DIR, fonte.id, ep.videoId);
-            state.episodios[episodioId] = {
-              fonteId: fonte.id, videoId: ep.videoId, titulo: ep.titulo,
-              thumbnail: ep.thumbnail, dir: dirOutput, status: 'baixando', erro: null,
-            };
-            salvarState(state);
-            emitProgresso('cortes', 5);
-
-            try {
-              logBus(`[Cortes] Baixando: ${ep.titulo}`);
-              const videoPath = await baixarEpisodio(ep.videoId, dirOutput);
-              emitProgresso('cortes', 40);
-
-              state.episodios[episodioId].status = 'detectando';
-              salvarState(state);
-              logBus(`[Cortes] Extraindo áudio e detectando momentos de corte: ${ep.titulo}`);
-              const audioPath = extrairAudio(videoPath, dirOutput);
-              await detectarCortes(audioPath, dirOutput);
-              emitProgresso('cortes', 100);
-
-              state.episodios[episodioId].status = 'pronto';
-              salvarState(state);
-              logBus(`✓ [Cortes] "${ep.titulo}" pronto pra revisão`);
-            } catch (e) {
-              state.episodios[episodioId].status = 'erro';
-              state.episodios[episodioId].erro   = e.message;
-              salvarState(state);
-              logBus(`⚠ [Cortes] Falha em "${ep.titulo}": ${e.message}`);
-            }
+            await processarEpisodio(fonte, ep, state);
           }
         } catch (e) {
           logBus(`⚠ [Cortes] Falha checando "${fonte.nome}": ${e.message}`);
@@ -119,6 +127,40 @@ function criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube,
       }
       logBus('[Cortes] Busca concluída');
     })().catch(e => logBus(`⚠ [Cortes] Erro inesperado: ${e.message}`)).finally(() => { emBusca = false; });
+  });
+
+  // ── Processar vídeo específico (antigo, fora da lista de "novos") ───────────
+
+  router.post('/processar-video', async (req, res) => {
+    const { fonteId, video } = req.body;
+    if (!fonteId || !video) return res.status(400).json({ error: 'fonteId e video são obrigatórios' });
+
+    const cfg = lerConfig();
+    const fonte = cfg.fontes.find(f => f.id === fonteId);
+    if (!fonte) return res.status(404).json({ error: 'Fonte não encontrada' });
+
+    const videoId = extrairVideoId(video);
+    if (!videoId) return res.status(400).json({ error: 'Não consegui extrair o ID do vídeo — cole a URL completa ou só o ID (11 caracteres)' });
+
+    const state = lerState();
+    const episodioId = `${fonte.id}__${videoId}`;
+    if (state.episodios[episodioId]) {
+      return res.status(400).json({ error: 'Esse vídeo já foi processado — veja a lista de episódios' });
+    }
+
+    let info;
+    try {
+      info = await buscarInfoVideo(videoId);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+
+    res.json({ ok: true, titulo: info.titulo });
+
+    capturarLogs(async () => {
+      logBus(`[Cortes] Processando vídeo manual: ${info.titulo}`);
+      await processarEpisodio(fonte, info, lerState());
+    })().catch(e => logBus(`⚠ [Cortes] Erro inesperado: ${e.message}`));
   });
 
   // ── Episódios e candidatos ───────────────────────────────────────────────────

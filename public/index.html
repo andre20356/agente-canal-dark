@@ -435,6 +435,19 @@ select.input { appearance: none; cursor: pointer; }
     </div>
 
     <div class="section">
+      <h3>Processar vídeo específico</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Pra cortar um vídeo antigo do parceiro (fora dos últimos uploads detectados automaticamente).
+        Cole a URL completa do YouTube ou só o ID do vídeo.
+      </div>
+      <select class="input" id="cortes-fonte-select" style="margin-bottom:10px">
+        <option value="">Selecione a fonte...</option>
+      </select>
+      <input class="input" id="cortes-video-input" placeholder="https://youtube.com/watch?v=... ou ID do vídeo" style="margin-bottom:10px">
+      <button class="btn btn-ghost btn-sm" id="btn-cortes-processar-video">Processar Este Vídeo</button>
+    </div>
+
+    <div class="section">
       <h3>Episódios</h3>
       <div id="cortes-episodios-lista" style="font-size:13px;color:var(--muted)">Carregando...</div>
     </div>
@@ -884,13 +897,43 @@ const STATUS_EPISODIO_LABEL = {
 async function carregarCortesFontes() {
   const fontes = (await api('/api/cortes/config') || { fontes: [] }).fontes || [];
   const div = document.getElementById('cortes-fontes-lista');
-  if (!fontes.length) { div.innerHTML = '<span style="color:var(--muted);font-size:13px">Nenhuma fonte cadastrada ainda.</span>'; return; }
+  const select = document.getElementById('cortes-fonte-select');
+
+  if (!fontes.length) {
+    div.innerHTML = '<span style="color:var(--muted);font-size:13px">Nenhuma fonte cadastrada ainda.</span>';
+    select.innerHTML = '<option value="">Cadastre uma fonte primeiro...</option>';
+    return;
+  }
   div.innerHTML = fontes.map(f => `
     <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="font-size:13px">${f.nome} <span style="color:var(--muted)">— ${f.youtube_channel}</span></span>
       <button class="btn btn-ghost btn-sm" onclick="removerFonteCortes('${f.id}')">Remover</button>
     </div>
   `).join('');
+
+  const selecionada = select.value;
+  select.innerHTML = '<option value="">Selecione a fonte...</option>' +
+    fontes.map(f => `<option value="${f.id}">${f.nome}</option>`).join('');
+  if (selecionada) select.value = selecionada;
+}
+
+async function processarVideoCortes() {
+  const fonteId = document.getElementById('cortes-fonte-select').value;
+  const video   = document.getElementById('cortes-video-input').value.trim();
+  if (!fonteId) { toast('Selecione uma fonte', 'err'); return; }
+  if (!video)   { toast('Cole a URL ou ID do vídeo', 'err'); return; }
+
+  const btn = document.getElementById('btn-cortes-processar-video');
+  btn.disabled = true;
+  btn.textContent = 'Processando...';
+  const r = await api('/api/cortes/processar-video', { fonteId, video });
+  btn.disabled = false;
+  btn.textContent = 'Processar Este Vídeo';
+
+  if (r?.error) { toast(r.error, 'err'); return; }
+  toast(`Processando "${r.titulo}" — acompanhe a lista de episódios`, 'ok');
+  document.getElementById('cortes-video-input').value = '';
+  setTimeout(carregarCortesEpisodios, 2000);
 }
 
 async function adicionarFonteCortes() {
@@ -1049,6 +1092,7 @@ document.getElementById('yt-modo-teste-toggle').addEventListener('change', async
 });
 document.getElementById('btn-cortes-add-fonte').addEventListener('click', adicionarFonteCortes);
 document.getElementById('btn-cortes-buscar').addEventListener('click', buscarEpisodiosCortes);
+document.getElementById('btn-cortes-processar-video').addEventListener('click', processarVideoCortes);
 document.getElementById('tiktok-toggle').addEventListener('change', async (e) => {
   const ativo = e.target.checked;
   e.target.disabled = true;
