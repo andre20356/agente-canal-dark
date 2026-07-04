@@ -185,7 +185,10 @@ function criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube,
 
   router.post('/candidatos/:episodioId/:idx/publicar', async (req, res) => {
     const { episodioId, idx } = req.params;
-    const { formato = 'vertical', plataformas = ['youtube'] } = req.body;
+    // Padrão "private": Canal de Cortes ainda está em teste, muita gente vai
+    // rodar isso no MESMO canal principal do Arquivo Sombrio antes de migrar
+    // pra um canal dedicado — nunca assumir 'public' por padrão aqui.
+    const { formato = 'vertical', plataformas = ['youtube'], privacidade = 'private' } = req.body;
     const state = lerState();
     const ep = state.episodios[episodioId];
     if (!ep) return res.status(404).json({ error: 'Episódio não encontrado' });
@@ -209,10 +212,10 @@ function criarCortesRouter({ logBus, emitProgresso, capturarLogs, uploadYouTube,
           const r = await uploadYouTube(ep.dir, {
             videoPath, titulo: candidato.titulo_sugerido,
             descricao: `Corte de: ${ep.titulo}\n\n${candidato.motivo}`,
-            privacidade: 'public',
+            privacidade,
           });
           resultados.youtube = r.url;
-          logBus(`✓ [Cortes] Publicado no YouTube: ${r.url}`);
+          logBus(`✓ [Cortes] Publicado no YouTube (${privacidade}): ${r.url}`);
         }
       }
       if (plataformas.includes('tiktok')) {

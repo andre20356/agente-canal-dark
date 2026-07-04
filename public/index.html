@@ -990,9 +990,14 @@ async function publicarCandidato(episodioId, idx, formato) {
   if (confirm('Publicar no YouTube?')) plataformas.push('youtube');
   if (confirm('Publicar também no TikTok?')) plataformas.push('tiktok');
   if (!plataformas.length) return;
-  const r = await api(`/api/cortes/candidatos/${episodioId}/${idx}/publicar`, { formato, plataformas });
+
+  const publico = plataformas.includes('youtube') &&
+    confirm('Publicar como PÚBLICO no YouTube?\n\nCancelar = fica privado (recomendado enquanto está testando o corte no mesmo canal do Arquivo Sombrio).');
+  const privacidade = publico ? 'public' : 'private';
+
+  const r = await api(`/api/cortes/candidatos/${episodioId}/${idx}/publicar`, { formato, plataformas, privacidade });
   if (r?.error) { toast(r.error, 'err'); return; }
-  toast('Publicação iniciada — acompanhe o console', 'ok');
+  toast(`Publicação iniciada (${privacidade === 'private' ? 'privado' : 'público'}) — acompanhe o console`, 'ok');
 }
 
 // ─── TikTok Auth (fluxo simples via prompt — sem modal dedicado) ─────────────
