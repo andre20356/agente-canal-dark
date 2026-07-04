@@ -1,3 +1,11 @@
 {
-  "fontes": []
+  "fontes": [
+    {
+      "id": "paulinho-loko-cortes",
+      "nome": "Paulinho loko cortes",
+      "youtube_channel": "https://www.youtube.com/@PaulinhoLOKOoficial",
+      "nota_parceria": "",
+      "ativo": true
+    }
+  ]
 }
